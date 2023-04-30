@@ -1,0 +1,113 @@
+title: C with Crosses
+baseURL: "https://victor-istomin.github.io/c-with-crosses/"
+theme: PaperModX
+
+enableRobotsTXT: true
+enableEmoji: true
+
+params:
+  description: "A personal insight and notes on C++"
+  author: Victor Istomin
+  images:
+    - cover.png
+  favicon: favicon.ico
+  #logo:
+  #  icon: images/logo.svg
+  DateFormat: "2006-01-02"
+  useCustomAnalytics: true
+  mainSections:
+    - posts
+    - notes
+
+  # theme params
+  DisableLanguageSwitch: true
+  TocOpen: true
+  TocSide: right
+  EnableInstantClick: false
+  EnableImageZoom: true
+  ShowShareButtons: true
+  ShareButtons:
+    - twitter
+    - telegram
+  ShowReadingTime: true
+  ShowWordCount: true
+  ShowCodeCopyButtons: true
+  ShowPostNavLinks: true
+  Email: hello@example.com
+
+  socialIcons:
+    - name: github
+      url: "https://github.com/victor-istomin"
+    - name: twitter
+      url: "https://twitter.com/VictorIstomin"
+    - name: rss
+      url: "feed.xml"
+    - name: gmail
+      url: email
+
+  socialAccounts:
+    twitter:
+      username: VictorIstomin
+
+  homeInfoParams:
+    Title: "A personal insight and notes on C++"
+    Content: |
+      Welcome to demo of hugo's theme PaperModX.
+
+      - **PaperModX** is a simple but fast and responsive theme with useful feature-set that enhances UX.
+
+      - PaperModX is based on theme [PaperMod](https://github.com/adityatelange/hugo-PaperMod).
+
+      To get started, please head to the [Docs](docs).
+
+      To see examples of different contents, head to [examples tag](tags/example).
+
+  #commentSystems:
+  #  disqus:
+  #    shortname: reorx
+  #  remark42:
+  #    url: https://remark42.reorx.com
+  #    site: reorx.github.io
+  #  telegramWidget:
+  #    channel: reorx_share
+  #    accentColor: "9077e1"
+  #    limit: 20
+  #defaultCommentSystems:
+  #  remark42: true
+
+permalinks:
+  notes: /:section/:year/:month/:slugorfilename
+
+# prefer feed.xml rather than index.xml
+outputFormats:
+  RSS:
+    mediatype: "application/rss"
+    baseName: "feed"
+
+menu:
+  main:
+    - name: Posts
+      url: /posts/
+      weight: 1
+    - name: Notes
+      url: /notes/
+      weight: 2
+    - name: Newsletter
+      url: /newsletter/
+      weight: 3
+    - name: Archives
+      url: /archives/
+      weight: 4
+
+languages:
+  en:
+    languageName: "English"
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    style: dracula
+    lineNos: false
+    noClasses: false
