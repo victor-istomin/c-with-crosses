@@ -1,0 +1,44 @@
+:root
+{
+  --post-width: 800px;
+
+  --monospace: Menlo,Monaco,Consolas,Courier New,Courier,monospace;
+  --accent-underline: rgb(255 , 171, 63);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, segoe ui, Roboto, Oxygen, Ubuntu, Cantarell, open sans, helvetica neue, sans-serif;
+}
+
+table 
+{
+  background-color: var(--code-bg);
+}
+
+summary span.dotted {
+  border-bottom: 1px dotted #ccc;
+}
+
+summary 
+{
+  text-decoration: underline dotted;
+  text-decoration-color: var(--link-color); /* Change the color here */
+  text-decoration-thickness: 1px;
+}
+
+summary:hover
+{
+  text-decoration: underline dotted;
+  text-decoration-color: var(--link-hover-color); /* Change the color here */
+  text-decoration-thickness: 2px;
+}
+
+code {
+  line-height: 1.1em;
+}
+
+abbr {
+  /* todo: https://bitsofco.de/making-abbr-work-for-touchscreen-keyboard-mouse/ */
+  text-decoration-color: var(--accent-underline); /* Change the color here */
+  text-decoration-thickness: 2px;
+}

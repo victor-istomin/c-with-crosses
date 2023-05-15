@@ -10,6 +10,8 @@ ShowToc: true
 cover:
   image: images/post-cover.jpg
   caption: a post cover
+draft: true
+hidden: true
 ---
 
 ## Image

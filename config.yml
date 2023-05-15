@@ -21,8 +21,9 @@ params:
 
   # theme params
   DisableLanguageSwitch: true
+  ShowToc: true
   TocOpen: true
-  TocSide: right
+  #TocSide: right
   EnableInstantClick: false
   EnableImageZoom: true
   ShowShareButtons: true
