@@ -25,6 +25,11 @@
   color: var(--link-hover-color);
 }
 
+.meta-item a:hover {
+  color: var(--link-hover-color);
+  box-shadow: 0 1px 0 var(--link-hover-color);
+}
+
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, segoe ui, Roboto, Oxygen, Ubuntu, Cantarell, open sans, helvetica neue, sans-serif;
