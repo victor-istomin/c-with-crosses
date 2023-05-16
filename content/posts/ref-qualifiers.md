@@ -147,7 +147,9 @@ The code above aims to accomplish the following:
  - `fine()` method 'loads' image that consists of one hundred pixels with a value of `{0x12,0x12,0x12}` and finds the maximum among them.   
  - `problematic()` method loads similar image and clamps every pixel's component to the maximum value of 0xFF and ensures that no pixels deviate from the 0x12 pattern.
  
-I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't:
+I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't:[^fixed-in-cpp23]
+[^fixed-in-cpp23]: Temporaries in the range-based for will be fixed in C++23, see the _Temporary range expression_ chapter [in the range-based for documentation](https://en.cppreference.com/w/cpp/language/range-for). However, `const Bar& lvalue = foo().bar();` still has the same pitfall. 
+
 {{< highlight shell >}}Program returned: 139
 output.s: /app/example.cpp:77: int main(int, char**): 
           Assertion `img.data().end() == std::ranges::find_if_not(img.data(), isGood)' failed.
@@ -169,7 +171,7 @@ I believe we can do better: provide an access to `data()` in a way that signific
 
 ## A ref-qualified member function
 
-At first glance, it might seem nice to prevent certain member functions from being called on the temporary. That's what we could achieve with _ref-qualified member functions_. That's not a broadly used feature of the language, so here is a short description: a function might have reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen basing on the type of `*this` reference. 
+It could be reasonable to prevent certain member functions from being called on a temporary object. That's what we could achieve with _ref-qualified member functions_. This feature is not broadly used, so here is a short description: a member function might have a reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen based on the type of `*this` reference. 
 
 A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
 {{< highlight cpp>}}#include <iostream>
@@ -187,11 +189,11 @@ int main()
     std::move(s).f(); // prints "rvalue"
     S().f();          // prints "rvalue"
 }{{< /highlight >}} 
-While member functions can also be const-qualified, it's important to note that constness is an orthogonal property that does not affect the reference qualifier. It's worth highlighting that it's rare to encounter a `const &&` reference in the wild, so typically, rvalue-overloads should not be const.
+While member functions can also be const-qualified, it's important to note that constness is an orthogonal property that does not affect the reference qualifier. It's worth highlighting that it's rare to encounter a `const &&` reference in the wild, so typically, rvalue-overloads should be non-const.
 
 ### Disable a member function call for rvalues
 
-Having read the cppreference, let's delete undesired overloads from the `MyRawImage` in almost no effrort:
+Having read the cppreference, let's delete undesired overloads from the `MyRawImage` with almost no effort:
 {{< highlight cpp "hl_lines=11-15" >}}
 class MyRawImage
 {
@@ -218,8 +220,8 @@ Well, now we can't accidentally access the property of the temporary via referen
 {{< /highlight >}}
 
 There is a single note regarding the declaration of `const std::vector<Pixel>& data() const &;`. Although it may initially appear to be a `const &` overload that should take a const lvalue reference to `*this`, there are actually two distinct categories:
- - this is an lvalue overloading which can't match rvalue object;
- - this is a const method which can match _both_ const and non-const objects.
+ - the declaration is an lvalue overloading that can’t match an rvalue object;
+ - the method is const, so it can match _both_ const and non-const objects.
 
 Now, let's address the compiler's complaints and examine the result. Currently, the only way to access `MyRawImage::data()` is by declaring a MyRawImage variable or using a const reference to [ extend the temporary lifetime](https://en.cppreference.com/w/cpp/language/lifetime). Therefore, we need to introduce a named variable or a const reference for every call to `data` on the temporary.
 
