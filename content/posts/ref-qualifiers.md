@@ -1,5 +1,5 @@
 ---
-title: "A practical usage of ref-qualified member function overloading"
+title: "Practical usage of ref-qualified member function overloading"
 date:  2023-05-16T00:59:12Z
 summary: "Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer."
 tags: ["cpp"]
