@@ -35,7 +35,7 @@ int main()
     static_assert(std::is_same_v<std::ranges::dangling, decltype(dangling_iter)>);
     // Compilation error below: 
     // no match for 'operator*' (operand type is 'std::ranges::dangling')
-//  std::cout << *dangling_iter << '\n';
+    // std::cout << *dangling_iter << '\n';
 
     // (2) However, the code below works fine:
     std::array<int, std::size(get_array_by_value())> copied;
@@ -165,11 +165,11 @@ const char* dangling = getMessage().c_str();
 int oops = strlen(dangling);    
 {{< /highlight >}} Although it might seem syntetic example, there are some practical use cases like sending the `std::string` content using WinAPI `SendMessage` or `PostMessage`. While `SendMessage` is synchronous and fine, `PostMessage` will result in a dangling pointer being stored and used later.  
 
-I believe we can do better: provide access to data() in a way that significantly reduces the likelihood of misuse and the occurrence of dangling references.
+I believe we can do better: provide an access to `data()` in a way that significantly reduces the likelihood of misuse and the occurrence of dangling references.
 
-## ref-qualified member functions
+## A ref-qualified member function
 
-At first glance, it might seem nice to prevent certain member functions from being called on the temporary. That's what we could achieve with _ref-qualified member functions_. That's not a broadly used feature of the language, so here is a short description: a function might have reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen basing on the type if `*this` reference. 
+At first glance, it might seem nice to prevent certain member functions from being called on the temporary. That's what we could achieve with _ref-qualified member functions_. That's not a broadly used feature of the language, so here is a short description: a function might have reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen basing on the type of `*this` reference. 
 
 A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
 {{< highlight cpp>}}#include <iostream>
@@ -187,11 +187,11 @@ int main()
     std::move(s).f(); // prints "rvalue"
     S().f();          // prints "rvalue"
 }{{< /highlight >}} 
-While member functions can also be const-qualified, it's important to note that constness is an orthogonal property that does not affect the reference qualifier. It's worth highlighting that it's rare to encounter a const && reference in the wild, so typically, rvalue-overloads should not be const.
+While member functions can also be const-qualified, it's important to note that constness is an orthogonal property that does not affect the reference qualifier. It's worth highlighting that it's rare to encounter a `const &&` reference in the wild, so typically, rvalue-overloads should not be const.
 
-### disable the member function call for rvalues
+### Disable a member function call for rvalues
 
-Having read the cppreference, let's delete undesired overloads from the MyRawImage in almost no effrort:
+Having read the cppreference, let's delete undesired overloads from the `MyRawImage` in almost no effrort:
 {{< highlight cpp "hl_lines=11-15" >}}
 class MyRawImage
 {
@@ -217,7 +217,7 @@ Well, now we can't accidentally access the property of the temporary via referen
       |                   ~~~~~~~~~~~~~~~~~^~
 {{< /highlight >}}
 
-There is a single note regarding the declaration of `const std::vector<Pixel>& data() const &;`. Although it may initially appear to be a 'const &` overload that should take a const lvalue reference to *this, there are actually two distinct categories:
+There is a single note regarding the declaration of `const std::vector<Pixel>& data() const &;`. Although it may initially appear to be a `const &` overload that should take a const lvalue reference to `*this`, there are actually two distinct categories:
  - this is an lvalue overloading which can't match rvalue object;
  - this is a const method which can match _both_ const and non-const objects.
 
@@ -271,7 +271,8 @@ MyRawImage was_problematic(int i)
         return p; 
     };
 
-    const MyRawImage& image = loadImage(i);  // const lvalue reference extends temporary object lifetime 
+    // const lvalue reference extends temporary object lifetime
+    const MyRawImage& image = loadImage(i); 
     for(Pixel p : image.data())
         filtered.push_back(filter(p));
 
@@ -308,20 +309,21 @@ Just a few comments, as usual:
  - `was_problematic` method is now good, since there is no temporary access. It utilizes _const lvalue reference lifetime extension_: the return value is bound to a `const MyRawImage& image`, thus extending itslifetime to match that of the reference. So the `data()` call is safe;
  - on the other hand, the `was_fine` method had to introduce an unnecessary lvalue variable for the temporary. While it may not seem like a significant problem, it violates the principle of keeping the scope of variables as small as possible. Ideally, it would have been preferable to maintain the temporary's lifetime within a single full-expression, but unfortunately, it didn't work out that way.
 
- ### explicitly enable the member function call on rvalues
+ ### Explicitly enable the member function call on rvalues
 
-The problem is that compiler is unable to detect whether the reference to a property of the temporary will outlive the parent object, so technicaly there are only two choises: always allow the call on rvalue, or always disallow it.  
-But what if the developer knows for sure that it's okay to use the rvalue in the specific line? Well, we can give an ability to state this and forcibly allow a specifi call with a little trick.
+The problem is that compiler is unable to detect whether the reference to a property of the temporary will outlive the parent object, so technicaly there are only two choises: always allow the call on rvalue, or always disallow it.
+
+But what if the developer knows for sure that it's okay to use the rvalue in the specific line? Well, we can give an ability to state this and forcibly allow a specific call with a little trick.
 
 Let's go back for a second to `std::range` which does not prohibit creating a view from a temporary but performs a view type selection instead:
  - for lvalue, a non-owning `std::ranges::ref_view` is used;
  - for rvalue, an owning `std::ranges::owning_view` is used to take the ownerphic of the temporary and convert it to an lvalue;
  - when returning a possible-dangling iterator to a conntent of the temporary, return a `std::ranges::dangling` to indicate this. 
 
-We could adopt the last approach to our needs and let the `/*...*/ data() &&;` return a special wrapper that should not be default-convertible to an underlying `data()` type. This way the special type will require the programmer's attention and make sure that there is no dangerous access is made by oversight. 
+We could adopt the last approach to our needs and let the corresponding member funciion `/*...*/ data() &&;` return a special wrapper that should not be implicitly-convertible to an underlying `data()` type. This way the special type will require the programmer's attention and make sure that there is no dangerous access is made by oversight. 
 
 Here we go:
-{{< highlight cpp "hl_lines=47" >}}
+{{< highlight cpp "hl_lines=47 26" >}}
 class MyRawImage
 {
     std::vector<Pixel> m_buffer;
@@ -334,7 +336,7 @@ public:
     public:
         UnsafeReference(std::vector<Pixel>& buffer) : m_buffer(buffer) {}
 
-        // I would like it to be a free-function rather a member functions,
+        // I would like it to be a free-function rather than a member function,
         // to lower the chance that the Intellisence will provide a disservice
         // to the developer slipping an unsafe getter by auto-suggestions. 
         // it's good to require a fair attention here
@@ -371,7 +373,9 @@ Pixel fine_again(int i)
     return max(allowUnsafe(loadImage(i).data()));
 }
 {{< /highlight >}}
-We could implement a similar approach for the Metagata, but for now I think the idea is clear (and I hope is also sold) to the reader, so further experiments are up to you.
+We could implement a similar approach for the Metadata, but for now I think the idea is clear (and I hope is also sold) to the reader, so further experiments are up to you.
+
+### The result I could live with
 
 The complete code below:
 {{< highlight cpp>}}
@@ -405,7 +409,7 @@ public:
         // I would like it to be a free-function rather a member functions,
         // to lower the chance that the Intellisence will provide a disservice
         // to the developer slipping an unsafe getter by auto-suggestions. 
-        // it's good to require a fair attention here
+        // it's good to require a fair bit of attention here
         friend std::vector<Pixel>& allowUnsafe(UnsafeReference&&);
     };
 
