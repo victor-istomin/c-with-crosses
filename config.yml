@@ -41,10 +41,12 @@ params:
       url: "https://github.com/victor-istomin"
     - name: twitter
       url: "https://twitter.com/VictorIstomin"
+    - name: "linkedin"
+      url: "https://www.linkedin.com/in/victor-istomin-b753b666/"
     - name: rss
       url: "feed.xml"
-    - name: gmail
-      url: email
+    # - name: gmail
+    #   url: email
 
   socialAccounts:
     twitter:
@@ -53,15 +55,8 @@ params:
   homeInfoParams:
     Title: "A personal insight and notes on C++"
     Content: |
-      Welcome to demo of hugo's theme PaperModX.
-
-      - **PaperModX** is a simple but fast and responsive theme with useful feature-set that enhances UX.
-
-      - PaperModX is based on theme [PaperMod](https://github.com/adityatelange/hugo-PaperMod).
-
-      To get started, please head to the [Docs](docs).
-
-      To see examples of different contents, head to [examples tag](tags/example).
+      A place for my personal development experiences, thoughts on C++, and, hopefully, some noteworthy milestones.
+    
 
   #commentSystems:
   #  disqus:

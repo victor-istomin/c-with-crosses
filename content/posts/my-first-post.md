@@ -316,7 +316,7 @@ Let's go back for a second to `std::range` which does not prohibit creating a vi
 We could adopt the last approach to our needs and let the `/*...*/ data() &&;` return a special wrapper that should not be default-convertible to an underlying `data()` type. This way the special type will require the programmer's attention and make sure that there is no dangerous access is made by oversight. 
 
 Here we go:
-{{< highlight cpp "hl_lines=46" >}}
+{{< highlight cpp "hl_lines=47" >}}
 class MyRawImage
 {
     std::vector<Pixel> m_buffer;
