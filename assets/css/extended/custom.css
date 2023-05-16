@@ -42,3 +42,8 @@ abbr {
   text-decoration-color: var(--accent-underline); /* Change the color here */
   text-decoration-thickness: 2px;
 }
+
+.dark .chroma .hl
+{
+  background-color: #353b4b;
+}
