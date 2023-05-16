@@ -22,7 +22,7 @@ params:
   # theme params
   DisableLanguageSwitch: true
   ShowToc: true
-  TocOpen: true
+  TocOpen: false
   #TocSide: right
   EnableInstantClick: false
   EnableImageZoom: true
@@ -85,9 +85,9 @@ menu:
     - name: Posts
       url: /posts/
       weight: 1
-    - name: Notes
-      url: /notes/
-      weight: 2
+#    - name: Notes
+#      url: /notes/
+#      weight: 2
 #    - name: Newsletter
 #      url: /newsletter/
 #      weight: 3

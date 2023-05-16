@@ -4,7 +4,27 @@
 
   --monospace: Menlo,Monaco,Consolas,Courier New,Courier,monospace;
   --accent-underline: rgb(255 , 171, 63);
+
+  --link-hover-color: #4a7ae3;
+  --link-underline-shadow: 0 1px 0 var(--link-color);
+  --link-hover-underline-color: var(--link-hover-color);
+  --link-hover-underline-shadow: 0 2px 0 var(--link-hover-underline-color);
 }
+
+.dark {
+
+  --link-background-color: #4251746d;
+  --link-color: var(--primary);
+  --link-hover-color: #4a7ae3;
+  --link-underline-shadow: 0 1px 0 var(--link-color);
+  --link-hover-underline-color: var(--link-hover-color);
+  --link-hover-underline-shadow: 0 2px 0 var(--link-hover-underline-color);
+}
+
+#menu a:hover {
+  color: var(--link-hover-color);
+}
+
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, segoe ui, Roboto, Oxygen, Ubuntu, Cantarell, open sans, helvetica neue, sans-serif;
@@ -34,7 +54,7 @@ summary:hover
 }
 
 code {
-  line-height: 1.1em;
+  line-height: 1.2em;
 }
 
 abbr {

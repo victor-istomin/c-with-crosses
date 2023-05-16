@@ -1,14 +1,10 @@
 ---
-title: "A note on ref-qualified member function overloading"
+title: "A practical usage of ref-qualified member function overloading"
 date:  2023-05-16T00:59:12Z
 summary: "Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer."
-# weight: 1
-# aliases: ["/first"]
 tags: ["cpp"]
 author: "Me"
 draft: false
-#description: "Desc Text. Trying **bold**, or even `code`"
-#canonicalURL: "https://canonical.url/to/page"
 ---
 Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer.
 
@@ -57,7 +53,7 @@ int main()
 
 3. The temporary is filtered and should be destroyed at the end of the _full-expression_, but the view takes ownership over it using the [owning_view](https://en.cppreference.com/w/cpp/ranges/owning_view). This means that it is perfectly valid to iterate over the filtered range after the original temporary has been destroyed.
 
-[^at-the-semicolon]: here, at the semicolon
+[^at-the-semicolon]: Here, at the semicolon
 
 All the magic above may suggest that when accessing the internal state of a large object like `RawImageBytes`, or when creating a most-recent-N subrange of the `RingBuffer`, we can do better than simply returning a pointer or reference to the internal data buffer and hoping that nobody will accidentally use a dangling pointer.
 
@@ -220,8 +216,8 @@ Well, now we can't accidentally access the property of the temporary via referen
 {{< /highlight >}}
 
 There is a single note regarding the declaration of `const std::vector<Pixel>& data() const &;`. Although it may initially appear to be a `const &` overload that should take a const lvalue reference to `*this`, there are actually two distinct categories:
- - the declaration is an lvalue overloading that can’t match an rvalue object;
  - the method is const, so it can match _both_ const and non-const objects.
+ - the declaration is an lvalue overloading that can’t match an rvalue object;
 
 Now, let's address the compiler's complaints and examine the result. Currently, the only way to access `MyRawImage::data()` is by declaring a MyRawImage variable or using a const reference to [ extend the temporary lifetime](https://en.cppreference.com/w/cpp/language/lifetime). Therefore, we need to introduce a named variable or a const reference for every call to `data` on the temporary.
 
@@ -308,21 +304,21 @@ int main(int, char**)
 }
 {{< /highlight >}}
 Just a few comments, as usual:
- - `was_problematic` method is now good, since there is no temporary access. It utilizes _const lvalue reference lifetime extension_: the return value is bound to a `const MyRawImage& image`, thus extending itslifetime to match that of the reference. So the `data()` call is safe;
+ - `was_problematic` method is now good, since there is no temporary access. It utilizes _const lvalue reference lifetime extension_: the return value is bound to a `const MyRawImage& image`, thus extending its lifetime to match that of the reference. So the `data()` call is safe;
  - on the other hand, the `was_fine` method had to introduce an unnecessary lvalue variable for the temporary. While it may not seem like a significant problem, it violates the principle of keeping the scope of variables as small as possible. Ideally, it would have been preferable to maintain the temporary's lifetime within a single full-expression, but unfortunately, it didn't work out that way.
 
  ### Explicitly enable the member function call on rvalues
 
-The problem is that compiler is unable to detect whether the reference to a property of the temporary will outlive the parent object, so technicaly there are only two choises: always allow the call on rvalue, or always disallow it.
+The problem is that compiler can't detect whether the reference to a property of the temporary will outlive the parent object. Technically there are two choices: allow the call on rvalue always or never.
 
-But what if the developer knows for sure that it's okay to use the rvalue in the specific line? Well, we can give an ability to state this and forcibly allow a specific call with a little trick.
+But what if the developer is certain that an rvalue could be used in the specific expression? Well, we can give the ability to state this intention and forcibly allow an rvalue overload call with a little trick.
 
-Let's go back for a second to `std::range` which does not prohibit creating a view from a temporary but performs a view type selection instead:
+Let's go back for a second to `std::range`. It does not prohibit creating a view from a temporary but performs a view type selection instead:
  - for lvalue, a non-owning `std::ranges::ref_view` is used;
- - for rvalue, an owning `std::ranges::owning_view` is used to take the ownerphic of the temporary and convert it to an lvalue;
- - when returning a possible-dangling iterator to a conntent of the temporary, return a `std::ranges::dangling` to indicate this. 
+ - for rvalue, an owning `std::ranges::owning_view` is used to take the ownership of the temporary and convert it to an lvalue;
+ - when returning a possible-dangling iterator to a content of the temporary, return a `std::ranges::dangling` to indicate this. 
 
-We could adopt the last approach to our needs and let the corresponding member funciion `/*...*/ data() &&;` return a special wrapper that should not be implicitly-convertible to an underlying `data()` type. This way the special type will require the programmer's attention and make sure that there is no dangerous access is made by oversight. 
+We could adopt the last approach to our needs: the rvalue overload of `data()` could return a special wrapper that should not be implicitly-convertible to an underlying reference type. This approach will require the programmer's attention and make sure that there is no dangerous access made by oversight. 
 
 Here we go:
 {{< highlight cpp "hl_lines=47 26" >}}
@@ -339,9 +335,9 @@ public:
         UnsafeReference(std::vector<Pixel>& buffer) : m_buffer(buffer) {}
 
         // I would like it to be a free-function rather than a member function,
-        // to lower the chance that the Intellisence will provide a disservice
-        // to the developer slipping an unsafe getter by auto-suggestions. 
-        // it's good to require a fair attention here
+        // to lower the chance that Intellisence will provide a disservice
+        // to the developer by slipping an unsafe getter by auto-suggestions. 
+        // it's good to require a fair bit of attention here
         friend std::vector<Pixel>& allowUnsafe(UnsafeReference&&);
     };
 
@@ -375,7 +371,9 @@ Pixel fine_again(int i)
     return max(allowUnsafe(loadImage(i).data()));
 }
 {{< /highlight >}}
-We could implement a similar approach for the Metadata, but for now I think the idea is clear (and I hope is also sold) to the reader, so further experiments are up to you.
+Now a similar approach could be implemented for the Metadata, but for now I hope the idea is clear[^honestly-sold] to the reader, so further experiments are up to you.
+
+[^honestly-sold]: Honestly, I hope the idea is _sold_
 
 ### The result I could live with
 
@@ -408,9 +406,9 @@ public:
     public:
         UnsafeReference(std::vector<Pixel>& buffer) : m_buffer(buffer) {}
 
-        // I would like it to be a free-function rather a member functions,
-        // to lower the chance that the Intellisence will provide a disservice
-        // to the developer slipping an unsafe getter by auto-suggestions. 
+        // I would like it to be a free-function rather than a member function,
+        // to lower the chance that Intellisence will provide a disservice
+        // to the developer by slipping an unsafe getter by auto-suggestions. 
         // it's good to require a fair bit of attention here
         friend std::vector<Pixel>& allowUnsafe(UnsafeReference&&);
     };
@@ -462,7 +460,7 @@ Pixel fine_again(int i)
         return *std::max_element(std::begin(range), std::end(range)); 
     };
 
-    // this one was fine: a temporary will be destroyed after the max() calcualtion
+    // this one is fine: a temporary will be destroyed after the max() calcualtion
     return max(allowUnsafe(loadImage(i).data()));
 }
 
