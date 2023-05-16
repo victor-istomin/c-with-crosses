@@ -1,5 +1,6 @@
 ---
 title: Notes
+hidden: true
 description: you can put some notes from your note-taking system here
 archivesSlug: archives
 type: essays
