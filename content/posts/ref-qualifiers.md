@@ -10,6 +10,8 @@ draft: false
 #description: "Desc Text. Trying **bold**, or even `code`"
 #canonicalURL: "https://canonical.url/to/page"
 ---
+Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer.
+
 ## Intro (the source of my excitement)
 
 Consider the following code that creates a temporary array using `get_array_by_value`, then uses the temporary when safe, rejects compilation when not safe, and takes ownership of the temporary when needed.
