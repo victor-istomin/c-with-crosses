@@ -147,7 +147,7 @@ The code above aims to accomplish the following:
  - `fine()` method 'loads' image that consists of one hundred pixels with a value of `{0x12,0x12,0x12}` and finds the maximum among them.   
  - `problematic()` method loads similar image and clamps every pixel's component to the maximum value of 0xFF and ensures that no pixels deviate from the 0x12 pattern.
  
-I believe that the reader can solve both mathematical problems mentally, but the thing is the provide code can't:
+I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't:
 {{< highlight shell >}}Program returned: 139
 output.s: /app/example.cpp:77: int main(int, char**): 
           Assertion `img.data().end() == std::ranges::find_if_not(img.data(), isGood)' failed.
@@ -157,9 +157,12 @@ The problem arises when obtaining a reference or pointer to a property of a temp
 
 A short STL example:
 {{< highlight cpp>}}std::string getMessage() { return "I'm a long enough message to avoid SSO"; }
-int length = strlen(getMessage().c_str());  // fine, the string is destroyed at the semicolon
+// fine, the string is destroyed at the semicolon
+int length = strlen(getMessage().c_str());  
+
+// bad, the string has been destroyed at the semicolon below
 const char* dangling = getMessage().c_str();
-int oops = strlen(dangling);   // bad, the string has been destroyed at the semicolon above ^ 
+int oops = strlen(dangling);    
 {{< /highlight >}} Although it might seem syntetic example, there are some practical use cases like sending the `std::string` content using WinAPI `SendMessage` or `PostMessage`. While `SendMessage` is synchronous and fine, `PostMessage` will result in a dangling pointer being stored and used later.  
 
 I believe we can do better: provide access to data() in a way that significantly reduces the likelihood of misuse and the occurrence of dangling references.
