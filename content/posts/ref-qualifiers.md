@@ -8,6 +8,12 @@ draft: false
 ---
 Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer.
 
+<details><summary>Article updates (2023-05-17)</summary>
+<ul>
+  <li>mistakenly said that lvalue-overload can't match rvalue object: <a href="#a-ref-qualified-member-function">it can</a>.</li>
+ <ul> 
+</details>
+
 ## Intro (the source of my excitement)
 
 Consider the following code that creates a temporary array using `get_array_by_value`, then uses the temporary when safe, rejects compilation when not safe, and takes ownership of the temporary when needed.
@@ -143,7 +149,7 @@ The code above aims to accomplish the following:
  - `fine()` method 'loads' image that consists of one hundred pixels with a value of `{0x12,0x12,0x12}` and finds the maximum among them.   
  - `problematic()` method loads similar image and clamps every pixel's component to the maximum value of 0xFF and ensures that no pixels deviate from the 0x12 pattern.
  
-I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't:[^fixed-in-cpp23]
+I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't until the C++23:[^fixed-in-cpp23]
 [^fixed-in-cpp23]: Temporaries in the range-based for will be fixed in C++23, see the _Temporary range expression_ chapter [in the range-based for documentation](https://en.cppreference.com/w/cpp/language/range-for). However, `const Bar& lvalue = foo().bar();` still has the same pitfall. 
 
 {{< highlight shell >}}Program returned: 139
@@ -167,25 +173,63 @@ I believe we can do better: provide an access to `data()` in a way that signific
 
 ## A ref-qualified member function
 
-It could be reasonable to prevent certain member functions from being called on a temporary object. That's what we could achieve with _ref-qualified member functions_. This feature is not broadly used, so here is a short description: a member function might have a reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen based on the type of `*this` reference. 
+It could be reasonable to prevent certain member functions from being called on a temporary object. That's what we could achieve with _ref-qualified member functions_. This feature is not broadly used, so here is a short description: a member function might have a reference qualifier in the same familiar way as the _const qualifier_. The correct overload will be chosen based on the type of `*this` reference. While member functions can also be const-qualified, it’s important to note that constness is an orthogonal property that does not affect the reference qualifier. 
 
-A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
+An overload resolution on ref-qualifier is done in the same way as for cv-qualifiers. To better understand how the member function overload works, let’s remember that the member function [_is considered to have an extra first parameter, called the implicit object parameter, which represents the object for which the member function has been called_](https://eel.is/c++draft/over.match.funcs.general#2).
+
+Thus, `Foo foo; foo.f()` is similar to `Foo::f(foo);`[^without-temporaries], where the type of implicit argument is determined by present cv- and ref- qualifiers on the member function declaration. I think the [execution result](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAUgBMAIUtXyKxqiIEh1ZpgDC6egFc2TEAstcncAGQImbAA5PwAjbFIQaQA2cgAHdCViFyYvX39A4Iys5yFwyJi2eMSU%2B2xHUqYRIhZSIjy/AKC6hpzm1qJy6LiEpNSlFraOgu6JgaHK6rGASnt0H1JUTi5LAGYI1F8cAGozXY8XCdJsdjPcMy0AQQfHq58nY5EXswB2GyfjoDjhgmBNgUhWgAqY6CdAQZbAoRgyzJQG/KzHa5EDZMU4WCywkCI0FEPGoswAVg8TEsFjOGN%2BABEXkDiWDUBDSNDYfCyazWejMdhsaRcbTCcd6AA3CQ%2BbB8ynU2n004/ZkAoEg9mc7noOEIrWklEo1UYrE4vEEvVEw1kk2Kmn4lVMlmapGkjlQmF63nGiyo/mmoUisX4iV%2B8lUx103YMtXfDWAubOVBsj0646xVoQW1ff0IoPm0WWrOJNMKqPK2Oq9WPVnJgip22ermZ7N55IFwOCouhiylonS2Xy%2B2Vp3Vl2J44Npvu8Fe0s5ucdlEInvCi20gfliOnMcxuO1%2BstFPllvQxcr/OBwsb4tb1pE3cOquHhN1oFS9AETDA640XlbXtP4XVjV1AS/H9JQAfX/X1/VNUD/g/CDv1/UhYOwAC139YCbHjMCniQ98IlJNgWAiCBSPIecuUhZZvhAqcWB8EhjmAYURFOXZGT3GwKV4gBaO5PhvW8Q0%2BeFnQI5DWRYtiOPaLizl4yl%2BKEkTc3Ei0RCkicZPfVkuKUbjeMU3SGMIlDyy41ATJU9jOL05DwOnIhMBANB1iNc4zg8RzRHhAA6Hku2OAB6cLvXQJ9cIQ04pzEtFfPOAKPAskKfS7SLoptOdn0SpK/L86dMv1JKcolIdfBHBDXKS7iPBKuyyt5G9KutHc6sKsTitS2lBMGobhuE/d6qKlL/JETzF3M%2BECxy7cCushq%2Bqmmbs0U9L5oiqLtyAuLyR6m81s%2BDbSAgJQwqBRbH0lGUaoVY7u0ms6QEXOzrt2tsywOo6VomprUomDyQHcegVSBQygSUILUDgyyMTEnL0AAa1cubljhhHIcBFHUZosAuFzE0HBoUyAos%2BkzGSLRXNc2H6Ew7DcfaqK0dcnLMaCpmcerb6ElIMgiSJjtp3qcmHMxonjmE3ZcGOUWZZYEyiaIJACCUZXSGAPxmFJQglHEUhMBMgBHHwJAIOgEnsikrEEmg0gSNhNayKVsEpWtOai2GML5pH%2BRywXhcVrgr1RMmKaUekZeuC2CGuEyWGBFWjSnbn/aw5zGNrLhVnobgKX4AIuB0cgYq4JrrFsad1k2Wrdj4cgiG0fPVlRkAKWCQuuGkEu24r7h%2BCUEBglbsv8/IOBYBQDA2DSBgEkoah58XxhEmAJRWDSJQkHQIhyBwKVG2wAA1AhsAAdwAeWd0vm7oegiFt6hYkH2IIlaABPbhm8/1gpBv431iLobATg/78HnhwYQN8mD0F/pPI%2B2ByImEkEgwg1wnAEA9qPJB2B1DgNYtscupF6iD3oAQWIpAf5eBwIPIgpACBsEgasGgRgt4X2vnfZgkC5DCDEBITgMh%2BGKBUBoQe%2BgeCGGMKYWwthDBUNHpAVY6A0iNDwYJEGKlzA12sBYXY/B0Ae1IEwnAyj4Q9HAY0NwTBPDeE6AYMIERhhVFGNI4o2QhDTACB4zIXimALBGIkaRDhrF9EmO0BxBRQn1HCUIfobQgluJCfYSJPiDBzCSS4xY7jVhKHrlsKQBci4DyQZXY46gAAcyRBLJGkOxVAqYICMJ8EwVGCIID4GIGQPETdlj8AnjoZYHcu4924P3cgpdy6VxHmPFubcRmGG4BYfgLDki7CCgATgMVoH4yQdm7D2Qc3YUzB6zIWZPVYM9kAgG8mkViK8lwLyXqQKI7BtjVNqfUxpzTWntIGSEQgJAzEGEEAI8QkgRHgrEWoTQSCpHkCvjQtIrDllcGLmc8p3Ab6sQeaSdA5Mvl1IacAJpxwWmkDaR0ilXgXkbz6TwQFQz27kCQDcHAiRLG90mSw3YyQgrHMOUK3ZPwsUzOHvYeZLKlm90MeKoxkqZWrBMVkVw0ggA) of the sample below will illustrate this much better than I can:
 {{< highlight cpp>}}#include <iostream>
- 
+
 struct S
 {
-    void f() &  { std::cout << "lvalue\n"; }
-    void f() && { std::cout << "rvalue\n"; }
+    const char* foo() const &  { return "foo: const & \n"; }
+    const char* foo() &        { return "foo: lvalue & \n"; }
+    const char* foo() const && { return "foo: const && \n"; }
+    const char* foo() &&       { return "foo: && \n"; }
+
+    static const char* bar(const S&)  { return "bar: const & \n"; }
+    static const char* bar(S&)        { return "bar: lvalue & \n"; }
+    static const char* bar(const S&&) { return "bar: const && \n"; }
+    static const char* bar(S&&)       { return "bar: && \n"; }
+
+    void cref() const & {};
+    void l_ref() & {};
+    void r_ref() && {};
 };
- 
-int main()
+
+int main(int, char**)
 {
-    S s;
-    s.f();            // prints "lvalue"
-    std::move(s).f(); // prints "rvalue"
-    S().f();          // prints "rvalue"
-}{{< /highlight >}} 
-While member functions can also be const-qualified, it's important to note that constness is an orthogonal property that does not affect the reference qualifier. It's worth highlighting that it's rare to encounter a `const &&` reference in the wild, so typically, rvalue-overloads should be non-const.
+    auto getS = [] -> S        { return S(); };
+    auto getCS = [] -> const S { return S(); };
+
+    S s = getS();
+    const S cs = getS();
+
+    std::cout << getS().foo()    // foo: &&  
+              << getCS().foo()   // foo: const && 
+              << s.foo()         // foo: lvalue & 
+              << cs.foo()        // foo: const & 
+              << "-----------\n"
+              << S::bar(getS())  // bar: && 
+              << S::bar(getCS()) // bar: const && 
+              << S::bar(s)       // bar: lvalue & 
+              << S::bar(cs)      // bar: const & 
+              << std::endl;    
+
+    s.cref();         // ok
+    getS().cref();    // ok, 'const S& self = getS();`
+    
+    s.l_ref();          // ok
+    // getS().l_ref();  // error: 'S& self = getS()' -> 'S' as 'this' argument discards qualifiers [-fpermissive]
+
+    // s.r_ref();       // error: 'S&& self = s;' requires a cast 
+    getS().r_ref();
+}
+{{< /highlight >}}
+
+It's worth highlighting that it's rare to encounter a `const &&` reference in the wild, so typically, rvalue-overloads should be non-const.
+
+[^without-temporaries]: but without the ability to use an implocit cast or to introduce a temporary, like `auto s = "char* " + std::string("string")`. 
 
 ### Disable a member function call for rvalues
 
@@ -214,10 +258,6 @@ Well, now we can't accidentally access the property of the temporary via referen
    54 |     for(Pixel p : loadImage(i).data())
       |                   ~~~~~~~~~~~~~~~~~^~
 {{< /highlight >}}
-
-There is a single note regarding the declaration of `const std::vector<Pixel>& data() const &;`. Although it may initially appear to be a `const &` overload that should take a const lvalue reference to `*this`, there are actually two distinct categories:
- - the method is const, so it can match _both_ const and non-const objects.
- - the declaration is an lvalue overloading that can’t match an rvalue object;
 
 Now, let's address the compiler's complaints and examine the result. Currently, the only way to access `MyRawImage::data()` is by declaring a MyRawImage variable or using a const reference to [ extend the temporary lifetime](https://en.cppreference.com/w/cpp/language/lifetime). Therefore, we need to introduce a named variable or a const reference for every call to `data` on the temporary.
 
