@@ -756,7 +756,7 @@ int main(int, char**)
     MyRawImage img = was_problematic(pattern);
     assert(img.data().end() == std::ranges::find_if_not(img.data(), isGood));
 
-    // this one is still UB, but according to the problem's specifications, 
+    // thecode below is still UB, but according to the problem's specifications, 
     // the team is careful and experienced enough not to write so.
     // const auto& lvalue = loadImage(pattern).data();
     // assert(lvalue.end() == std::ranges::find_if_not(lvalue, isGood));
