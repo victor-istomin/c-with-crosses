@@ -628,7 +628,7 @@ Compile, run, enjoy.
 ## Deducing 'this'
 
 Well, there should be a place where C++23 is available, developers are careful enough when using references and probably a unicorn is hanging around. Can we do even better?
-<details><summary>At least, we could do a mental experiment and imagine such a place.</summary>(if you're there, and if it isn't 2030s around, please, email me - I have to apply for that job)</details>
+<details><summary>At least, we could do a mental experiment and imagine such a place.</summary><span class="dim-text">(if you're there, and if it isn't 2030s around, please, email me - I have to apply for that job)</span></details>
 
 
 Since C++23 the compiler is able to deduce the type of <abbr title="*this">_implicit member function parameter_</abbr> and make it explicit. Literally, it's like converting the `X x; x.foo()` into `X x; X::foo(x)`. Among other unobvious abilities, it allows the perfect forwarding of '*this'. I strongly recommend both [the Sy Brand article](https://devblogs.microsoft.com/cppblog/cpp23-deducing-this/) and [the talk on CppCon](https://www.youtube.com/watch?v=jXf--bazhJw).
@@ -652,7 +652,7 @@ This way, the `MyRawImage::data()` template that captures `*this` as `auto&& sel
 As C++23 allows usage of reference to the temporary's member in the range-based 'for', there are very few possibilities to misuse the code. Thus it's a great alternative to `UnsafeReference` once we assume that developers are careful enough to avoid binding `getTemporary().getMemberReference()` to a const lvalue reference.
 
 Let's take a final look at the C++23 masterpiece:
-{{< highlight cpp "linenos=table,hl_lines=27-31 53-54 105-108">}}#include <ranges> 
+{{< highlight cpp "hl_lines=27-31 53-54 105-108">}}#include <ranges> 
 #include <cassert>
 #include <vector>
 #include <algorithm>

@@ -44,6 +44,11 @@ summary span.dotted {
   border-bottom: 1px dotted #ccc;
 }
 
+span.dim-text
+{
+  color: var(--secondary)
+}
+
 summary 
 {
   text-decoration: underline dotted;
