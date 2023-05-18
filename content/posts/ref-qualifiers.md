@@ -10,8 +10,9 @@ Recently, I discovered that <code>std::ranges</code> prohibits the creation of d
 
 <details><summary>Article updates (2023-05-18)</summary>
 <ul>
-  <li>address perfomance considerations: now <a href="#explicitly-enable-the-member-function-call-on-rvalues">UnsafeReference</a> is a wrapper around rvalue reference;</li>
   <li>mistakenly said that lvalue-overload can't match rvalue object: <a href="#a-ref-qualified-member-function">it can</a>.</li>
+  <li>address perfomance considerations: now <a href="#explicitly-enable-the-member-function-call-on-rvalues">UnsafeReference</a> is a wrapper around rvalue reference;</li>
+  <li>added a <a href="#deducing-this">C++23 solution</a> making use of 'deducing *this'</li>
  <ul> 
 </details>
 
@@ -623,3 +624,141 @@ int main(int, char**)
 }
 {{< /highlight >}}
 Compile, run, enjoy. 
+
+## Deducing 'this'
+
+Well, there should be a place where C++23 is available, developers are careful enough when using references and probably a unicorn is hanging around. Can we do even better?
+<details><summary>At least, we could do a mental experiment and imagine such a place.</summary>(if you're there, and it's not '30 around, please, email me - I have to apply for that job)</details>
+
+
+Since C++23 the compiler is able to deduce the type of <abbr title="*this">_implicit member function parameter_</abbr> and make it explicit. Literally, it's like converting the `X x; x.foo()` into `X x; X::foo(x)`. Among other unobvious abilities, it allows the perfect forwarding of '*this'. I strongly recommend both [the Sy Brand article](https://devblogs.microsoft.com/cppblog/cpp23-deducing-this/) and [the talk on CppCon](https://www.youtube.com/watch?v=jXf--bazhJw).
+
+Having read the article we could drop the `UnsafeReference` and its explicit `allowUnsafe` for significantly cleaner implementation code: 
+{{< highlight cpp>}}class MyRawImage
+{
+    // ...
+
+    template <typename Self>
+    auto&& data(this Self&& self) 
+    {
+        return std::forward<Self>(self).m_buffer;
+    }
+
+    // ...
+};
+{{< /highlight >}}
+This way, the `MyRawImage::data()` template that captures `*this` as `auto&& self = *this` conforming to the usual forwarding reference rules: in the return statement, `self` is forwarded with exactly the same type as `decltype(*this)` was, preserving cv- and ref-qualification. 
+
+As C++23 allows usage of reference to the temporary's member in the range-based 'for', there are very few possibilities to misuse the code. Thus it's a great alternative to `UnsafeReference` once we assume that developers are careful enough to avoid binding `getTemporary().getMemberReference()` to a const lvalue reference.
+
+Let's take a final look at the C++23 masterpiece:
+{{< highlight cpp "linenos=table,hl_lines=27-31 53-54 105-108">}}#include <ranges> 
+#include <cassert>
+#include <vector>
+#include <algorithm>
+
+struct Pixel
+{
+    int r = 0;
+    int g = 0;
+    int b = 0;
+
+    friend auto operator<=>(const Pixel& a, const Pixel& b) = default;
+};
+
+struct Metadata { /* some metadata here, width, height, etc. */ };
+
+class MyRawImage
+{
+    std::vector<Pixel> m_buffer;
+    Metadata           m_metadata;
+public:
+    MyRawImage(std::vector<Pixel> src) : m_buffer(std::move(src)) {}
+
+    const Pixel& operator[](int index) const { return m_buffer[index]; }
+    Pixel& operator[](int index) { return m_buffer[index]; }
+
+    template <typename Self>
+    auto&& data(this Self&& self) 
+    {
+        return std::forward<Self>(self).m_buffer;
+    }
+
+    const Metadata& information() const& { return m_metadata; }
+    const Metadata& information() && = delete;
+};
+
+MyRawImage loadImage(int i)
+{
+    return std::vector<Pixel>(i * 100, Pixel{ i, i, i });
+}
+
+MyRawImage was_problematic(int i)
+{
+    std::vector<Pixel> filtered;
+    auto filter = [](Pixel p)
+    {
+        p.r = std::min(p.r, 0xFF);
+        p.g = std::min(p.g, 0xFF);
+        p.b = std::min(p.b, 0xFF);
+        return p;
+    };
+
+    // in C++23 all the temporaries are guaranteed to be valid during 'for' 
+    for (Pixel p : loadImage(i).data())
+        filtered.push_back(filter(p));
+
+    return filtered;
+}
+
+std::vector<Pixel> was_suboptimal(int i)
+{
+    // now it's good: move from the temporary, 
+    // because the rvalue-overload of 'data()' returns an rvalue reference
+    std::vector<Pixel> filtered = loadImage(i).data();
+    auto filter = [](Pixel p)
+    {
+        p.r = std::min(p.r, 0xFF);
+        p.g = std::min(p.g, 0xFF);
+        p.b = std::min(p.b, 0xFF);
+        return p;
+    };
+
+    for (Pixel& p : filtered)
+        p = filter(p);
+
+    return filtered;
+}
+
+Pixel fine_again(int i)
+{
+    auto max = [](auto&& range) -> Pixel
+    {
+        return *std::max_element(std::begin(range), std::end(range));
+    };
+
+    // fine: a temporary will be destroyed after the max() calcualtion
+    return max(loadImage(i).data());
+}
+
+int main(int, char**)
+{
+    constexpr static int pattern = 0x12;
+    constexpr static Pixel pixelPattern = Pixel{ pattern, pattern, pattern };
+    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
+
+    Pixel maxPixel = fine_again(pattern);
+    assert(maxPixel == pixelPattern);
+
+    std::vector<Pixel> pixels = was_suboptimal(pattern);
+    assert(pixels.end() == std::ranges::find_if_not(pixels, isGood));
+
+    MyRawImage img = was_problematic(pattern);
+    assert(img.data().end() == std::ranges::find_if_not(img.data(), isGood));
+
+    // this one is still UB, but according to the problem's specifications, 
+    // the team is careful and experienced enough not to write so.
+    // const auto& lvalue = loadImage(pattern).data();
+    // assert(lvalue.end() == std::ranges::find_if_not(lvalue, isGood));
+}
+{{< /highlight >}} Compile once more, run, enjoy if you have <abbr title="Visual Studio 2022 version 17.2+ with '/std:c++latest' compiler key">modern enough compiler</abbr>, and have a nice day!
