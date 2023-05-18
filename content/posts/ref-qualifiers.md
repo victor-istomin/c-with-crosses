@@ -1,15 +1,16 @@
 ---
 title: "Practical usage of ref-qualified member function overloading"
 date:  2023-05-16T00:59:12Z
-summary: "Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer."
+summary: "Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to the _ref-qualified memeber functions_ which can be used to make code safer."
 tags: ["cpp"]
 author: "Me"
 draft: false
 ---
-Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to a valuable feature that can be used to make code safer.
+Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to the _ref-qualified memeber functions_ which can be used to make code safer and/or more performant.
 
-<details><summary>Article updates (2023-05-17)</summary>
+<details><summary>Article updates (2023-05-18)</summary>
 <ul>
+  <li>address perfomance considerations: now <a href="#explicitly-enable-the-member-function-call-on-rvalues">UnsafeReference</a> is a wrapper around rvalue reference;</li>
   <li>mistakenly said that lvalue-overload can't match rvalue object: <a href="#a-ref-qualified-member-function">it can</a>.</li>
  <ul> 
 </details>
@@ -93,7 +94,7 @@ public:
 };
 {{< /highlight >}} 
 Up to this point, the code appears to be following standard and conventional practices. However, I believe there is room for improvement, and that's why:
-{{< highlight cpp>}}
+{{< highlight cpp "hl_lines=20 30">}}
 MyRawImage loadImage(int i)
 {
     return std::vector<Pixel>(i * 100, Pixel {i, i, i});
@@ -110,12 +111,30 @@ MyRawImage problematic(int i)
         return p; 
     };
 
-    // oops: 
-    // equivalent of `auto&& ps =  loadImage(i).data(); for (Pixel p : ps) { ... }`
-    // loadImage() returns a temporary, temporary.data() reference is stored, then
-    // for-loop iterates over a stored reference to a property of deleted temporary 
+    // oops: equivalent of `auto&& ps =  loadImage(i).data(); for (p : ps) { ... }`
+    // loadImage() returns a temporary, temporary.data() reference is stored,
+    // then for-loop iterates over a stored reference to a deleted temporary 
     for(Pixel p : loadImage(i).data())
         filtered.push_back(filter(p));
+
+    return filtered;
+}
+
+std::vector<Pixel> suboptimal_performance(int i)
+{
+    // can't move from the temporary, even using explicit move,
+    // because the reference is const
+    std::vector<Pixel> filtered = loadImage(i).data();
+    auto filter = [](Pixel p) 
+    { 
+        p.r = std::min(p.r, 0xFF); 
+        p.g = std::min(p.g, 0xFF); 
+        p.b = std::min(p.b, 0xFF);
+        return p; 
+    };
+    
+    for(Pixel& p : filtered)
+        p = filter(p);
 
     return filtered;
 }
@@ -135,27 +154,31 @@ int main(int, char**)
 {
     constexpr static int pattern = 0x12;
     constexpr static Pixel pixelPattern = Pixel { pattern, pattern, pattern };
+    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
 
     Pixel maxPixel = fine(pattern);
     assert(maxPixel == pixelPattern);
 
+    std::vector<Pixel> pixels = suboptimal_performance(pattern);
+    assert(pixels.end() == std::ranges::find_if_not(pixels, isGood));
+
     MyRawImage img = problematic(pattern);
-    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
     assert(img.data().end() == std::ranges::find_if_not(img.data(), isGood));
 }
-{{< /highlight >}} There is a [full source](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAUgBMAIUtXyKxqiIEh1ZpgDC6egFc2TEABOLXJ3ABkCJmwAOT8AI2xSEABWEIAHdCViFyYvX38g9MzsoQio2LYEpNT7bEdnIREiFlIiPL8A4Nr6nKaWojKY%2BMSUkKVm1vaCrvH%2BwYqq0YBKe3QfUlROLksAZkjUXxwAajMdj1JjYGwlU9wzLQBBXf3D7BOz8SUVVtv7p4s9kwDj5jqcPAA3bBOMi/R7PIGvd4eCTAMjEJBsWFPR7jUg%2BJxHVQEdR1P5mADsNkeRxpR0iRCOpHeABEjlpTlSHrS6cIjsAWWyOX9ufSjnEBeydpzhbSaKQCO4jiwfCQjug0okWCRSGDTszbhAMExxoTiaSLAA2JXkI5Gk1Ekn0SxWuJLAU4GjK%2BhEIVw8n6qVknFEPEEgCy2GamC1LBOlKOAHoAFRHJToDhHDhRmNHJCJbA2gDuBEwRCQNrzBGASCINsjqAAdEckwm4wGrCc4Y8DiwvkcwwBPABKLELAEk2CwrmTKTKaeNMCAQJDoTqzg7STtcJmAPpxHw0GiJX1c2kR7PNblXmlsHdZljR5ontI%2BOL0AioEBz/vD0cTqfYBAC5Liu2pghuTpbqmGxuiAu77oeiRAUQi4gGw6CQkBMFuhSNj%2BkGp40naDIQc6aoahcYHJDYyTMhAoqRDg6husRcYdqQkbrEw8EHkeOrUYx2DqGYtEcm236kZa17kZqVE0XRDFMExbrXrhjKcaQ3G3ghfEiVYgnCaJUriV2hG2kIJrAcuUJgeuZqQXcUmPiwEAsRZDI0mpHFEFxPGIWuHYUvq1K0qx54PjGZGRIIpCTg0TCueZxoedyXkaVpd6RhFT7GUFM7tgRg4juOk5XEc9DoA%2B/5XPRvIEEsM6cty3m%2BVZoEwnZjoGgQzZHDwWghKajpsQQNqjXSQUNYGfrBdiDxFX%2BpVvGkpDoG%2B2BxR%2BtUMvVjXfm1NkdR4pFQXQ3r5pgJ7csqqpnUQiQCnpIl0RBRxpDhIWefG37cmkDZMnqqYoUubCRBAf0UGy6gAGLQ1NgWfVef38oDVmgwlyM2loMNw2JP20n94qo8DaFg4TWM4/D%2BM0i1mlvXjiN5dNc3cgmrboOqShwd%2BbNHNgACOPgEOCEjMAy6A0CcFpaDd6DOmRaRKAK5WVZg1WAfVDbOa5YkxUcECvWkRxwYrOHxg2FvidLPOthVVVLYltPGkqRz3WwGQXKQA42m7HstAOWsxo72B8cwmx0kr4xkNgmDkDbrt5txMUALQVeqdL3ZR1xqpCTKxlHHGYOpodAm8qqxit6qJEQA5qpLOCMPdRe%2B2Q/udmZMUG/Zb3Gyr9sAfRSyB80rkNYj3J3RdDYvkoSB7iwqAANa0Awmfg0sVOmc16VHJPhcnnlpmvXQUTbXSY9PLOiOy5mLDqI91HPRAsvy1JFwmNgbrJ7cQ11O3qXfXHrSJ2zY0Z3x3HUDaYtkKoQSMAMG78rgrCBqhdwEBEGf3hv/WkTNpSI15mWAgSshBvCIbvSInAXYt09rXYs9B6BijeDgXE6ABwxyVDQTOCc3iTnUIlcQ9BUA%2BAkPFb8IDeEQDtmrB2mttYbwZpfWafxRSTjBvSG0qAkAtCTEmC%2BuFvzESEitIGWoPw8gZGkLUmduKA2xjwCwV1QruSMUyWYzhUC/wYWkeyqgrGJBsTsVkr01KWKINYm0oTwlvT8XTXBBFuSvV4cEwJ5DT6RP8ZvMyvZvhEAgEk7uepAbeMdL4sJGSD6IwWiVACdI2AoxSZXdam1UDgxiUwTJ10VToAjgAcQ5kXQGT1aKGncp4hWZt2I7yNoUhpPi2l43wsza6Xxq70TqcPFyQ80E4UCcTVCGCuYgBPpgHcBAaA7iYOgXJBB1lyLGkoPpWB5FLNlBQiAdiLCZMPg8LgKx6DcGSPwAIXAdDkHQNwDwthbCpjWBsN4uw%2BDkCINoX5KxF6jEMNwaQQKUVgu4PwLmIRkUgt%2BeQOAsAUAYHdgwRIlBqBUu8YwJIwAlCsEVkgK55AcDgg/NgAAagqQsAB5DUwLEV7y5hAOIuK4iRH9twRFsrWBeyFXEXQNkFX8CpRwYQQqmD0AHLinAk4TCSBJVyggHEnDC2uLioSUIVRbFBfSOouL3xxBoV4HAuKQw3M1SsGgRgWUCuwMK0Vmq5DCDEKLKQshBDCGUGoTQ5r9A8EMJcNAULrCGAIHELmkAVjqnilzLgycFx6nMNYWwAJ%2BAYUSPKZh8AVgOBsjkNwSkpgBDTeEChCwRhpoyFkeKnaDCDpKEweYwwkhppbdaxoEw2jeA6AYWd8U%2BitEnZUft9gF0jpnQuzdiweDNthZsKQfyAU4vNeCrgRx1AAA4LTJwtNIPkqAPEQBDD4Jgi83QQHwMQMgJwATHv4MSnQG9yDopqP8rg2LyDAtBTeglIAiUosg7Biw/A2AgHJBaBsFpkjkmkMke9yQLQ7GSJRwIabEO1vxUi9DZLEAQBQGsIgL5axUBGdSpl0R2BbAfU%2Bl9b6P1fp/UsfgMdAMNoMPG0QAjOAyEjYoFQGhcWpvIIWC4aR/WYq4IChDuKb1CpVJxuud7H3PtfcAd9%2BtxO/v1l4XjD0EWScYySyDeYHwjFcvp%2BDOGAQNh2NICwyRpAyB2C%2Bl9WhAgWCM9ehjhKPMQYvVwHYV6kMMfA6i8gucsiuGkEAA%3D%3D%3D) just in case some of us don't enjoy guessing missed includes.
+{{< /highlight >}} There is a [full source](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAUgBMAIUtXyKxqiIEh1ZpgDC6egFc2TA3cAGQImbAA5PwAjbFIQAFZyAAd0JWIXJi9ffwMUtOchELDIthi4xIdsJwyRIhZSIiy/AJ57bEcCplr6oiKI6NiE%2BzqGppzWpRHe0P7SwfiASnt0H1JUTi5LAGZQ1F8cAGozLY9SY2BsJWPcMy0AQW3d/ewjk/ElFQbr24eLHaY9j5DscPAA3KokUjfe6PAHPV4eCTAMjEJBsaEPe6TUg%2BJwHVQEdTtH5mADsNnuBypB1CRAOpFeABEDlpjhS7tSacIDsAmSy2T9ObSDlE%2BaytuzBdSaKQCO4DiwfCQDugkrEWJCQcdGdcIBgmJN8YTiRYAGwK8gHfWGglE%2BiWc1RBZ8nA0RX0IgCmGknUSklYog4vEAWWwdUwGpYR3JBwA9AAqA5KdAcA4ccORg5IWLYS0AdwImCISEt2YIwCQREtYdQADoDvHY9HfVYjjD7nsWB8DsGAJ4AJRYeYAkmwWBcSeSpVTJpgQCBwU4yCDbcStrg0wB9KI%2BGg0WJejnU0MZuqc89Utib9MsCN1Q9JHxRegEVAgac9gdD0fj7AQWfzoumonKu9rrkmazOiAW47nusT/kQc4gGw6Dgv%2BkHOmSNg%2Bv6R5UtadKgQ6KpqmcmrxDY8SMhAwqhDg6jOgR0atqQYarEwMG7vuUIUXR2DqGYVFss2H5EWaF4keq5GUdRtFMPRzoXlh9JsaQHFXrB3GCVYfECUJEoie2eFWkIhoAQuELLiBxpgTc4l3iwECMaZdJUsprFEOxnFwVCBlkjqlLUkxJ63pGxGhIIpBjp0TkmQarmcu5qnqdeYahfefk4d6La4X2g4jmOFwHPQ6C3j%2BFw0dyBALJO7Kch5XnmUBVkeER640Q2Bw8FoWiWqBzEEJag00v5NV%2BtluVfgVv4HEkpDoM%2B2DRa%2BlV0tVtUfk1lm%2Ba1NnXAcdAejmmCHpyirKodRCxHy2mCdR/VJJhgVuTGH6ckktYMtqSaIfObChBAH0UCy6gAGKg2NrZvdSH28t95n/UwgO1sAlpaGDEPCdDVIfaK8O/chAO42jGOQ9jKmeWps1Y89InjZixmxk26Cqko0HYAAjj4BCghIzB0ugNBHKaWjnegDrEUkSh8sVpWYOVf7VbWDlOcJkUHIDBzQVLmExrW%2BsiSLH5M7LZWFX%2BzoNWp0tRldbApGcpC9padsO/UvbK5GsWsdxzDrDS0uTGQ2CYOQxtNsWzAHWQAC0JWqjSV1kZcKrggyUZB6xmAqb7AIvMqUY4IwV3Z67ZDu22xmRRAD1a6b8vmzRCye3UTk1bTnKXcdtaPkoSDbiwqAANa0AwSeAwsZNGfVyUHWPx2Hv5uFbUuO1tRuShPqqzhjvQm6kZFY556tNLtw8U60yb4hMGAXB0ih4IHfNbAHJHr9LW7TvVuCHE%2BGkJgHH4kkF8qBiBplQrmcOIoqiKhUK/bMOccx5wDnFSYm0CbNTXntcCXcs58hKmbX8TcW6OSnsZMWc8jpfS2MyW6VEa42Vmk9YyylyZAz5AjImn0Sbg0hpXCSs0UYcIJojZGqMQa8JpsZd6tY8Y0J%2BkhURxMJGY3pgIq2HEkhSMSjhNR1IPzVzEuaJIddcEhzPgIkx31cET0XrTDRlCk4h0XllBm/U6BhBPutb0dVqQULHOoG6FE7oQDFhLcSZwTDYGdDHfa/UPysI7tSBx8YEYsHUJudoS1%2BYISQjEYAANIkXCWAo%2Bc7gIBFOiXwhJujJSXwjkgAg0shAvCaXPMI0FbYf3Lk7A4BZ6D0GgQcHA2J0C9hDgqGgSd4EvACbFcQ9BUA%2BAkJ0D8Di5kEIbkQpWKtJ5SKXkZYUY4Aa0ktKgJA9R4zxjPlhD8BEgEMkmBqV8XI6RJA1EnDi310Y8AsKdIKLkHk/WeagI0dpZo2VUB82IXz5HxJjO8ognzLSIuRbNaFVMl56KpBQppABxFm2dvp0OokxIxTDmIUy8lYmh30kiQoxUwLGtTcKcn6gE%2BJ8iPF/lRTCshZ0PixCIBADljDtR0oZUivldjjIr2ArtO0%2B16V2mlvDLeSQd4SH3rEQ%2Bxh1iA0ZfyvxgqGiAxskoWs5TMK0vkeZSpbMQAeMwJuAgNBNxMHQMK5V7QlBDSUASrAez6Yfjyt%2Bc2NI2Bw3kXNBajBlqoANVKtSRqcUmuFQQSNJCnKWvkrFcVtqCb2vnE6l1bqPXpszbsv1AbMBBslK4rgSx6DcHiPwAIXAdDkHQNwDwthbBJhWGsF42w%2BDkCINoRtSwh4JF6s2rg0g20Tq7dwfgbNerjo7Y28gcBYAoAwPbBgsRKDUH3fSxgcRgBKFYFLJAnryA4FBK%2BbAAA1OUeYADyap22jtwWzCAUQl1RFCO7bgo6gOsCdu%2BqIugISgf4Pujgwh31MHoL2JdOAj7AEkJu%2B9BBWLVHBGzHD/EqhKg2J22k7Ql0viiI7XsXgcBLsDBmuDSwaBGEva%2B7AH6v1wbkMIMQfMpCyEEMIZQahNA4f0K0IwJg0B9usIYAgUQ2aQCWNvDIRGY6zm1OYawtgLCdogaQWUIz4BLEqNUVwEB3BjBaOQYIMwShlFyKkdIQg7OufyBkPoznBgTCyVZroUxPMBY6DUKYvmBhxAmCF7wzQDBPIaFFuYMWLODvWFIJtLbF04e7VwA46gAAcpoY6mmkDyVAoKICBh8EwIezoID4GIGQI4fweALH4BunQk9yDTviLO7gC7yDtqMyu%2BwIB10Tt63Oiw/A2AgFNFsWsABOP4WhSSmjW1sDbW2tgjaXflrr03t2IAgCgFYRBHxVioHqFMZ7YjhHYBsYrpXyuVeq7V%2BrnWHOEEhIWAwonRALM4DIfjigVAaCXdJ8geYzhJFY4YHLB28vcHfUqa7KohavbKxV4AVWNZfYaxrLwB7z1ta2B147m7evZlvIMJySP53zZAFsU0tZdvbc5%2Bt0kKOxtcFXZNsd03stcC2Ll/n1OetLDTmkVw0ggA%3D) just in case some of us don't enjoy guessing missed includes.
 
-The code above aims to accomplish the following:
+First, there is a performance pitfall: although moving the whole `MyRawImage` is possible, moving the data out of temporary is not because the constant lvalue reference prohibits even explicit `std::move`.
+
+Disregarding the performance, the code above aims to accomplish the following:
  - `fine()` method 'loads' image that consists of one hundred pixels with a value of `{0x12,0x12,0x12}` and finds the maximum among them.   
  - `problematic()` method loads similar image and clamps every pixel's component to the maximum value of 0xFF and ensures that no pixels deviate from the 0x12 pattern.
- 
-I believe that the reader can solve both mathematical problems mentally, but the thing is the provided code can't until the C++23:[^fixed-in-cpp23]
-[^fixed-in-cpp23]: Temporaries in the range-based for will be fixed in C++23, see the _Temporary range expression_ chapter [in the range-based for documentation](https://en.cppreference.com/w/cpp/language/range-for). However, `const Bar& lvalue = foo().bar();` still has the same pitfall. 
 
-{{< highlight shell >}}Program returned: 139
+ {{< highlight shell >}}Program returned: 139
 output.s: /app/example.cpp:77: int main(int, char**): 
           Assertion `img.data().end() == std::ranges::find_if_not(img.data(), isGood)' failed.
 {{< /highlight >}}
+ 
+I believe that the reader can solve both mathematical problems mentally, but the output above suggests that until C++23 the provided code can't. Even with C++23, there is a same pitfall with `const Bar& lvalue = foo().bar();`: there is no const lvalue reference to the result of `foo()` so its lifetime is not extended and the refererence, returned from bar() is dangling. The reader could proceed to the _Temporary range expression_ chapter [in the range-based for documentation](https://en.cppreference.com/w/cpp/language/range-for) for mode details, if needed. 
 
 The problem arises when obtaining a reference or pointer to a property of a temporary object. Often, it is permissible, but there is a risk of misuse by developers, leading to dangling references and undefined behavior.
 
@@ -169,7 +192,7 @@ const char* dangling = getMessage().c_str();
 int oops = strlen(dangling);    
 {{< /highlight >}} Although it might seem syntetic example, there are some practical use cases like sending the `std::string` content using WinAPI `SendMessage` or `PostMessage`. While `SendMessage` is synchronous and fine, `PostMessage` will result in a dangling pointer being stored and used later.  
 
-I believe we can do better: provide an access to `data()` in a way that significantly reduces the likelihood of misuse and the occurrence of dangling references.
+I believe we can do better: provide an access to `data()` in a way that significantly reduces the likelihood of misuse and the occurrence of dangling references. We'll try to address the performance considerations as well.
 
 ## A ref-qualified member function
 
@@ -251,7 +274,7 @@ public:
     const Metadata& information() const &    { return m_metadata; }
     const Metadata& information() && = delete;
 };{{< /highlight >}}
-Well, now we can't accidentally access the property of the temporary via reference because the rvalue-this overloading is explicitly deleted. 
+Well, now we can't accidentally access the property of the temporary via reference because the rvalue-this overloading is explicitly deleted. The performance is still sub-optimal because we've sacrificed rvalue references for <abbr title="for those who aren't careful enough when using references">the error-resistance</abbr>. 
 {{< highlight cpp>}}
 <source>: In function 'MyRawImage problematic(int)':
 <source>:54:36: error: use of deleted function 'const std::vector<Pixel>& MyRawImage::data() &&'
@@ -259,12 +282,13 @@ Well, now we can't accidentally access the property of the temporary via referen
       |                   ~~~~~~~~~~~~~~~~~^~
 {{< /highlight >}}
 
-Now, let's address the compiler's complaints and examine the result. Currently, the only way to access `MyRawImage::data()` is by declaring a MyRawImage variable or using a const reference to [ extend the temporary lifetime](https://en.cppreference.com/w/cpp/language/lifetime). Therefore, we need to introduce a named variable or a const reference for every call to `data` on the temporary.
+Now, let's address the compiler's complaints and examine the result. Currently, the only way to access `MyRawImage::data()` is by declaring a MyRawImage variable or using a const reference to [extend the temporary lifetime](https://en.cppreference.com/w/cpp/language/lifetime). Therefore, we need to introduce a named variable or a const reference for every call to `data` on the temporary.
 
-{{< highlight cpp>}}
+{{< highlight cpp "hl_lines=50 60 88">}}
 #include <ranges>
 #include <cassert>
 #include <vector>
+#include <algorithm>
 
 struct Pixel
 {
@@ -309,10 +333,32 @@ MyRawImage was_problematic(int i)
         return p; 
     };
 
-    // const lvalue reference extends temporary object lifetime
+     // const lvalue reference extends temporary object lifetime
     const MyRawImage& image = loadImage(i); 
     for(Pixel p : image.data())
         filtered.push_back(filter(p));
+
+    return filtered;
+}
+
+std::vector<Pixel> suboptimal_performance(int i)
+{
+    // Well, at least, now this code begs for optimization 
+    MyRawImage image = loadImage(i);    // no problem, thanks to copy-elision
+
+    // can't move from the temporary, even using explicit move,
+    // because the reference is const
+    std::vector<Pixel> filtered = image.data();
+    auto filter = [](Pixel p) 
+    { 
+        p.r = std::min(p.r, 0xFF); 
+        p.g = std::min(p.g, 0xFF); 
+        p.b = std::min(p.b, 0xFF);
+        return p; 
+    };
+    
+    for(Pixel& p : filtered)
+        p = filter(p);
 
     return filtered;
 }
@@ -327,25 +373,30 @@ Pixel was_fine(int i)
     // this one was fine: a temporary will be destroyed after the max() calcualtion
     // return max(loadImage(i).data()); 
     MyRawImage image = loadImage(i); 
-    return max(image.data());         // <-- would be nice to avoid creating a named variable here
+    return max(image.data());    // <-- would be nice to avoid creating a named variable here
 }
 
 int main(int, char**)
 {
     constexpr static int pattern = 0x12;
     constexpr static Pixel pixelPattern = Pixel { pattern, pattern, pattern };
+    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
 
     Pixel maxPixel = was_fine(pattern);
     assert(maxPixel == pixelPattern);
+    
+    std::vector<Pixel> pixels = suboptimal_performance(pattern);
+    assert(pixels.end() == std::ranges::find_if_not(pixels, isGood));
 
     MyRawImage img = was_problematic(pattern);
-    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
     assert(img.data().end() == std::ranges::find_if_not(img.data(), isGood));
 }
+
 {{< /highlight >}}
 Just a few comments, as usual:
  - `was_problematic` method is now good, since there is no temporary access. It utilizes _const lvalue reference lifetime extension_: the return value is bound to a `const MyRawImage& image`, thus extending its lifetime to match that of the reference. So the `data()` call is safe;
- - on the other hand, the `was_fine` method had to introduce an unnecessary lvalue variable for the temporary. While it may not seem like a significant problem, it violates the principle of keeping the scope of variables as small as possible. Ideally, it would have been preferable to maintain the temporary's lifetime within a single full-expression, but unfortunately, it didn't work out that way.
+ - on the other hand, the `was_fine` method had to introduce an unnecessary lvalue variable for the temporary. While it may not seem like a significant problem, it violates the principle of keeping the scope of variables as small as possible. Ideally, it would have been preferable to maintain the temporary's lifetime within a single full-expression, but unfortunately, it didn't work out that way;
+ - and the code inside `suboptimal_performance` definitely looks like a candidate for optimization.
 
  ### Explicitly enable the member function call on rvalues
 
@@ -361,24 +412,29 @@ Let's go back for a second to `std::range`. It does not prohibit creating a view
 We could adopt the last approach to our needs: the rvalue overload of `data()` could return a special wrapper that should not be implicitly-convertible to an underlying reference type. This approach will require the programmer's attention and make sure that there is no dangerous access made by oversight. 
 
 Here we go:
-{{< highlight cpp "hl_lines=47 26" >}}
+{{< highlight cpp "linenos=table,hl_lines=31 49 72" >}}
 class MyRawImage
 {
     std::vector<Pixel> m_buffer;
     Metadata           m_metadata;
 public:
+    // a wrapper around temporary result of MyRawImage().data() may be 
+    // converted to a temporary 'std::vector<Pixel>' explictly using  allowUnsafe(). 
+    // Be safe and ensure that it will not outlive its parent  MyRawImage.
     class UnsafeReference 
     {  
-        std::vector<Pixel>& m_buffer;
+        std::vector<Pixel>&& m_buffer;
 
     public:
-        UnsafeReference(std::vector<Pixel>& buffer) : m_buffer(buffer) {}
+        UnsafeReference(std::vector<Pixel>&& buffer) : m_buffer(std::move(buffer)) {}
+        UnsafeReference(const UnsafeReference&) = delete;
+        UnsafeReference(UnsafeReference&&) = delete;
 
-        // I would like it to be a free-function rather than a member function,
-        // to lower the chance that Intellisence will provide a disservice
-        // to the developer by slipping an unsafe getter by auto-suggestions. 
-        // it's good to require a fair bit of attention here
-        friend std::vector<Pixel>& allowUnsafe(UnsafeReference&&);
+        // I would like it to be a free-function rather a member functions,
+        // to lower the chance that the Intellisence will provide a disservice
+        // to the developer slipping an unsafe getter by auto-suggestions. 
+        // it's good to require a fair attention here
+        friend std::vector<Pixel>&& allowUnsafe(UnsafeReference&&);
     };
 
     MyRawImage(std::vector<Pixel> src) : m_buffer(std::move(src)) {}
@@ -387,18 +443,38 @@ public:
     Pixel&       operator[](int index)       { return m_buffer[index]; }
 
     const std::vector<Pixel>& data() const & { return m_buffer; }
-    UnsafeReference data() &&                { return m_buffer; }
+    UnsafeReference data() &&                { return std::move(m_buffer); }
 
     const Metadata& information() const &    { return m_metadata; }
     const Metadata& information() && = delete;
 };
 
-std::vector<Pixel>& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
+std::vector<Pixel>&& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
 {
-    return unsafe.m_buffer;
+    // 'unsafe.m_buffer' is lvalue in the function body
+    return std::move(unsafe.m_buffer);
 }
 
 // ...
+
+std::vector<Pixel> was_suboptimal(int i)
+{
+    // now it's good:
+    // move from the temporary, because allowUnsafe returns an rvalue reference
+    std::vector<Pixel> filtered = allowUnsafe(loadImage(i).data());
+    auto filter = [](Pixel p) 
+    { 
+        p.r = std::min(p.r, 0xFF); 
+        p.g = std::min(p.g, 0xFF); 
+        p.b = std::min(p.b, 0xFF);
+        return p; 
+    };
+    
+    for(Pixel& p : filtered)
+        p = filter(p);
+
+    return filtered;
+}
 
 Pixel fine_again(int i)
 {
@@ -407,7 +483,7 @@ Pixel fine_again(int i)
         return *std::max_element(std::begin(range), std::end(range)); 
     };
 
-    // this one was fine: a temporary will be destroyed after the max() calcualtion
+    // fine: a temporary will be destroyed after the max() calcualtion
     return max(allowUnsafe(loadImage(i).data()));
 }
 {{< /highlight >}}
@@ -422,6 +498,7 @@ The complete code below:
 #include <ranges>
 #include <cassert>
 #include <vector>
+#include <algorithm>
 
 struct Pixel
 {
@@ -439,18 +516,23 @@ class MyRawImage
     std::vector<Pixel> m_buffer;
     Metadata           m_metadata;
 public:
+    // a wrapper around temporary result of MyRawImage().data() may be 
+    // converted to a temporary 'std::vector<Pixel>' explictly using  allowUnsafe(). 
+    // Be safe and ensure that it will not outlive its parent  MyRawImage.
     class UnsafeReference 
     {  
-        std::vector<Pixel>& m_buffer;
+        std::vector<Pixel>&& m_buffer;
 
     public:
-        UnsafeReference(std::vector<Pixel>& buffer) : m_buffer(buffer) {}
+        UnsafeReference(std::vector<Pixel>&& buffer) : m_buffer(std::move(buffer)) {}
+        UnsafeReference(const UnsafeReference&) = delete;
+        UnsafeReference(UnsafeReference&&) = delete;
 
-        // I would like it to be a free-function rather than a member function,
-        // to lower the chance that Intellisence will provide a disservice
-        // to the developer by slipping an unsafe getter by auto-suggestions. 
-        // it's good to require a fair bit of attention here
-        friend std::vector<Pixel>& allowUnsafe(UnsafeReference&&);
+        // I would like it to be a free-function rather a member functions,
+        // to lower the chance that the Intellisence will provide a disservice
+        // to the developer slipping an unsafe getter by auto-suggestions. 
+        // it's good to require a fair attention here
+        friend std::vector<Pixel>&& allowUnsafe(UnsafeReference&&);
     };
 
     MyRawImage(std::vector<Pixel> src) : m_buffer(std::move(src)) {}
@@ -459,15 +541,16 @@ public:
     Pixel&       operator[](int index)       { return m_buffer[index]; }
 
     const std::vector<Pixel>& data() const & { return m_buffer; }
-    UnsafeReference data() &&                { return m_buffer; }
+    UnsafeReference data() &&                { return std::move(m_buffer); }
 
     const Metadata& information() const &    { return m_metadata; }
     const Metadata& information() && = delete;
 };
 
-std::vector<Pixel>& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
+std::vector<Pixel>&& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
 {
-    return unsafe.m_buffer;
+    // 'unsafe.m_buffer' is lvalue in the function body
+    return std::move(unsafe.m_buffer);
 }
 
 MyRawImage loadImage(int i)
@@ -493,6 +576,25 @@ MyRawImage was_problematic(int i)
     return filtered;
 }
 
+std::vector<Pixel> was_suboptimal(int i)
+{
+    // now it's good:
+    // move from the temporary, because allowUnsafe returns an rvalue reference
+    std::vector<Pixel> filtered = allowUnsafe(loadImage(i).data());
+    auto filter = [](Pixel p) 
+    { 
+        p.r = std::min(p.r, 0xFF); 
+        p.g = std::min(p.g, 0xFF); 
+        p.b = std::min(p.b, 0xFF);
+        return p; 
+    };
+    
+    for(Pixel& p : filtered)
+        p = filter(p);
+
+    return filtered;
+}
+
 Pixel fine_again(int i)
 {
     auto max = [](auto&& range) -> Pixel 
@@ -500,7 +602,7 @@ Pixel fine_again(int i)
         return *std::max_element(std::begin(range), std::end(range)); 
     };
 
-    // this one is fine: a temporary will be destroyed after the max() calcualtion
+    // fine: a temporary will be destroyed after the max() calcualtion
     return max(allowUnsafe(loadImage(i).data()));
 }
 
@@ -508,12 +610,15 @@ int main(int, char**)
 {
     constexpr static int pattern = 0x12;
     constexpr static Pixel pixelPattern = Pixel { pattern, pattern, pattern };
+    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
 
     Pixel maxPixel = fine_again(pattern);
     assert(maxPixel == pixelPattern);
+    
+    std::vector<Pixel> pixels = was_suboptimal(pattern);
+    assert(pixels.end() == std::ranges::find_if_not(pixels, isGood));
 
     MyRawImage img = was_problematic(pattern);
-    auto isGood = [](const Pixel& p) { return p == pixelPattern; };
     assert(img.data().end() == std::ranges::find_if_not(img.data(), isGood));
 }
 {{< /highlight >}}
