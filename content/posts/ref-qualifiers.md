@@ -420,7 +420,7 @@ class MyRawImage
     Metadata           m_metadata;
 public:
     // a wrapper around temporary result of MyRawImage().data() may be 
-    // converted to a temporary 'std::vector<Pixel>' explictly using  allowUnsafe(). 
+    // converted to a temporary 'std::vector<Pixel>' explictly using  allow_unsafe(). 
     // Be safe and ensure that it will not outlive its parent  MyRawImage.
     class UnsafeReference 
     {  
@@ -435,7 +435,7 @@ public:
         // to lower the chance that the Intellisence will provide a disservice
         // to the developer slipping an unsafe getter by auto-suggestions. 
         // it's good to require a fair attention here
-        friend std::vector<Pixel>&& allowUnsafe(UnsafeReference&&);
+        friend std::vector<Pixel>&& allow_unsafe(UnsafeReference&&);
     };
 
     MyRawImage(std::vector<Pixel> src) : m_buffer(std::move(src)) {}
@@ -450,7 +450,7 @@ public:
     const Metadata& information() && = delete;
 };
 
-std::vector<Pixel>&& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
+std::vector<Pixel>&& allow_unsafe(MyRawImage::UnsafeReference&& unsafe)
 {
     // 'unsafe.m_buffer' is lvalue in the function body
     return std::move(unsafe.m_buffer);
@@ -461,8 +461,8 @@ std::vector<Pixel>&& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
 std::vector<Pixel> was_suboptimal(int i)
 {
     // now it's good:
-    // move from the temporary, because allowUnsafe returns an rvalue reference
-    std::vector<Pixel> filtered = allowUnsafe(loadImage(i).data());
+    // move from the temporary, because allow_unsafe returns an rvalue reference
+    std::vector<Pixel> filtered = allow_unsafe(loadImage(i).data());
     auto filter = [](Pixel p) 
     { 
         p.r = std::min(p.r, 0xFF); 
@@ -485,7 +485,7 @@ Pixel fine_again(int i)
     };
 
     // fine: a temporary will be destroyed after the max() calcualtion
-    return max(allowUnsafe(loadImage(i).data()));
+    return max(allow_unsafe(loadImage(i).data()));
 }
 {{< /highlight >}}
 Now a similar approach could be implemented for the Metadata, but for now I hope the idea is clear[^honestly-sold] to the reader, so further experiments are up to you.
@@ -518,7 +518,7 @@ class MyRawImage
     Metadata           m_metadata;
 public:
     // a wrapper around temporary result of MyRawImage().data() may be 
-    // converted to a temporary 'std::vector<Pixel>' explictly using  allowUnsafe(). 
+    // converted to a temporary 'std::vector<Pixel>' explictly using  allow_unsafe(). 
     // Be safe and ensure that it will not outlive its parent  MyRawImage.
     class UnsafeReference 
     {  
@@ -533,7 +533,7 @@ public:
         // to lower the chance that the Intellisence will provide a disservice
         // to the developer slipping an unsafe getter by auto-suggestions. 
         // it's good to require a fair attention here
-        friend std::vector<Pixel>&& allowUnsafe(UnsafeReference&&);
+        friend std::vector<Pixel>&& allow_unsafe(UnsafeReference&&);
     };
 
     MyRawImage(std::vector<Pixel> src) : m_buffer(std::move(src)) {}
@@ -548,7 +548,7 @@ public:
     const Metadata& information() && = delete;
 };
 
-std::vector<Pixel>&& allowUnsafe(MyRawImage::UnsafeReference&& unsafe)
+std::vector<Pixel>&& allow_unsafe(MyRawImage::UnsafeReference&& unsafe)
 {
     // 'unsafe.m_buffer' is lvalue in the function body
     return std::move(unsafe.m_buffer);
@@ -580,8 +580,8 @@ MyRawImage was_problematic(int i)
 std::vector<Pixel> was_suboptimal(int i)
 {
     // now it's good:
-    // move from the temporary, because allowUnsafe returns an rvalue reference
-    std::vector<Pixel> filtered = allowUnsafe(loadImage(i).data());
+    // move from the temporary, because allow_unsafe returns an rvalue reference
+    std::vector<Pixel> filtered = allow_unsafe(loadImage(i).data());
     auto filter = [](Pixel p) 
     { 
         p.r = std::min(p.r, 0xFF); 
@@ -604,7 +604,7 @@ Pixel fine_again(int i)
     };
 
     // fine: a temporary will be destroyed after the max() calcualtion
-    return max(allowUnsafe(loadImage(i).data()));
+    return max(allow_unsafe(loadImage(i).data()));
 }
 
 int main(int, char**)
@@ -631,9 +631,9 @@ Well, there should be a place where C++23 is available, developers are careful e
 <details><summary>At least, we could do a mental experiment and imagine such a place.</summary><span class="dim-text">(if you're there, and if it isn't 2030s around, please, email me - I have to apply for that job)</span></details>
 
 
-Since C++23 the compiler is able to deduce the type of <abbr title="*this">_implicit member function parameter_</abbr> and make it explicit. Literally, it's like converting the `X x; x.foo()` into `X x; X::foo(x)`. Among other unobvious abilities, it allows the perfect forwarding of '*this'. I strongly recommend both [the Sy Brand article](https://devblogs.microsoft.com/cppblog/cpp23-deducing-this/) and [the talk on CppCon](https://www.youtube.com/watch?v=jXf--bazhJw).
+Since C++23 the compiler is able to deduce the type of <abbr title="*this">_implicit member function parameter_</abbr> and make it explicit. Literally, it's like converting the `X x; x.foo()` into `X x; X::foo(x)`. Among other unobvious abilities, it allows the perfect forwarding of '*this'. There is a great overview in the [Sy Brand article](https://devblogs.microsoft.com/cppblog/cpp23-deducing-this/) and a great insight in the [Deducing this Patterns - talk on CppCon](https://www.youtube.com/watch?v=jXf--bazhJw).
 
-Having read the article we could drop the `UnsafeReference` and its explicit `allowUnsafe` for significantly cleaner implementation code: 
+Having read the article we could drop the `UnsafeReference` and its explicit `allow_unsafe` for significantly cleaner implementation code: 
 {{< highlight cpp>}}class MyRawImage
 {
     // ...
