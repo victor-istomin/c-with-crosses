@@ -8,11 +8,12 @@ draft: false
 ---
 Recently, I discovered that <code>std::ranges</code> prohibits the creation of dangling iterators and provides an <code>owning_view</code> to take ownership of temporaries. Digging into the details led me to the _ref-qualified memeber functions_ which can be used to make code safer and/or more performant.
 
-<details><summary>Article updates (2023-05-18)</summary>
+<details><summary>Article updates (2023-05-19)</summary>
 <ul>
   <li>mistakenly said that lvalue-overload can't match rvalue object: <a href="#a-ref-qualified-member-function">it can</a>.</li>
   <li>address perfomance considerations: now <a href="#explicitly-enable-the-member-function-call-on-rvalues">UnsafeReference</a> is a wrapper around rvalue reference;</li>
   <li>added a <a href="#deducing-this">C++23 solution</a> making use of 'deducing *this'</li>
+  <li>added a list of <a href="#resources-id-recommend-to-explore">recommended resources</a> </li>
  <ul> 
 </details>
 
@@ -57,7 +58,7 @@ int main()
 - `std::ranges::max_element` is executed, any side effects are preserved (e.g. stdout output);
 - `dangling_iter` is impossible to dereference, preventing access to the destroyed array.
 
-2. A temporary is valid to be copied from, but the iterator to the end of the temporary range is `std::ranges::dangling` so the developer can't reuse it. 
+2. A temporary is valid to be copied from, but the copy but the iterator to the end of the source range is `std::ranges::dangling`, which prevents dereferencing. 
 
 3. The temporary is filtered and should be destroyed at the end of the _full-expression_, but the view takes ownership over it using the [owning_view](https://en.cppreference.com/w/cpp/ranges/owning_view). This means that it is perfectly valid to iterate over the filtered range after the original temporary has been destroyed.
 
@@ -207,12 +208,12 @@ Thus, `Foo foo; foo.f()` is similar to `Foo::f(foo);`[^without-temporaries], whe
 struct S
 {
     const char* foo() const &  { return "foo: const & \n"; }
-    const char* foo() &        { return "foo: lvalue & \n"; }
+    const char* foo() &        { return "foo: & \n"; }
     const char* foo() const && { return "foo: const && \n"; }
     const char* foo() &&       { return "foo: && \n"; }
 
     static const char* bar(const S&)  { return "bar: const & \n"; }
-    static const char* bar(S&)        { return "bar: lvalue & \n"; }
+    static const char* bar(S&)        { return "bar: & \n"; }
     static const char* bar(const S&&) { return "bar: const && \n"; }
     static const char* bar(S&&)       { return "bar: && \n"; }
 
@@ -231,12 +232,12 @@ int main(int, char**)
 
     std::cout << getS().foo()    // foo: &&  
               << getCS().foo()   // foo: const && 
-              << s.foo()         // foo: lvalue & 
+              << s.foo()         // foo: & 
               << cs.foo()        // foo: const & 
               << "-----------\n"
               << S::bar(getS())  // bar: && 
               << S::bar(getCS()) // bar: const && 
-              << S::bar(s)       // bar: lvalue & 
+              << S::bar(s)       // bar: & 
               << S::bar(cs)      // bar: const & 
               << std::endl;    
 
@@ -244,9 +245,9 @@ int main(int, char**)
     getS().cref();    // ok, 'const S& self = getS();`
     
     s.l_ref();          // ok
-    // getS().l_ref();  // error: 'S& self = getS()' -> 'S' as 'this' argument discards qualifiers [-fpermissive]
+    // getS().l_ref();  // error: 'S& self = getS()': 'S' as 'this' argument discards qualifiers [-fpermissive]
 
-    // s.r_ref();       // error: 'S&& self = s;' requires a cast 
+    // s.r_ref();       // error: 'S&& self = s;' requires explicit cast 
     getS().r_ref();
 }
 {{< /highlight >}}
@@ -762,3 +763,11 @@ int main(int, char**)
     // assert(lvalue.end() == std::ranges::find_if_not(lvalue, isGood));
 }
 {{< /highlight >}} Compile once more, run, enjoy if you have <abbr title="Visual Studio 2022 version 17.2+ with '/std:c++latest' compiler key">modern enough compiler</abbr>, and have a nice day!
+
+## Resources I'd recommend to explore
+Just in case you're here to discover that one intriguing link mentioned in the text above, there is a list of all the sources referenced:
+- [std::ranges::owning_view](https://en.cppreference.com/w/cpp/ranges/owning_view) 
+- [overloading resolution in the current C++ draft](https://eel.is/c++draft/over.match.funcs.general)
+- [cppreference: object lifetime](https://en.cppreference.com/w/cpp/language/lifetime)
+- [Sy Brand on Deducing 'this'](https://devblogs.microsoft.com/cppblog/cpp23-deducing-this/) 
+- [Deducing this Patterns - Ben Deane - CppCon 2021](https://www.youtube.com/watch?v=jXf--bazhJw)
