@@ -762,7 +762,7 @@ int main(int, char**)
     // const auto& lvalue = loadImage(pattern).data();
     // assert(lvalue.end() == std::ranges::find_if_not(lvalue, isGood));
 }
-{{< /highlight >}} Compile once more, run, enjoy if you have <abbr title="Visual Studio 2022 version 17.2+ with '/std:c++latest' compiler key">modern enough compiler</abbr>, and have a nice day!
+{{< /highlight >}} Compile once more, run, enjoy if your <abbr title="Visual Studio 2022 version 17.2+">compiler is modern enough</abbr>, and have a nice day!
 
 ## Resources I'd recommend to explore
 Just in case you're here to discover that one intriguing link mentioned in the text above, there is a list of all the sources referenced:
