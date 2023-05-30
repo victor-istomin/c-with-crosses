@@ -46,7 +46,7 @@ add_executable(makeString main.cpp)
 set(CMAKE_CXX_EXTENSIONS OFF)      # no vendor-specific extensions
 set_property(TARGET makeString PROPERTY CXX_STANDARD 20)
 
-### ask a compiler to be more demanding
+# ask a compiler to be more demanding
 if (MSVC)
     target_compile_options(makeString PUBLIC /W4 /WX /Za /permissive-)
 else()
@@ -83,7 +83,7 @@ int main()
 }
 {{< /highlight >}}
 
-### makeString.hpp and a trivial template
+### A trivial template in makeString.hpp 
 
 And finally, a trivial template. 
 
@@ -128,11 +128,11 @@ template <> std::string makeString(const int& i)
     return std::to_string(i); 
 }{{< /highlight >}}
 
-But wait, despite the compiler will probably optimize access via reference for us, it looks strange: why do we pass 4 bytes int parameter by an 8-byte const reference? I mean, we know why, but there must be a better way.
+Well, although the function above works, it violates the ["pass cheaply-copied types by value"](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#f16-for-in-parameters-pass-cheaply-copied-types-by-value-and-others-by-reference-to-const) guideline. Passing by-value is not only cheaper but also easier to optimize. Check out [Arthur O’Dwyer's blog](https://quuxplusone.github.io/blog/2021/11/09/pass-string-view-by-value/) for additional insight on the example of `string_view`.
 
 ## Template function overloading
 
-Both template functions and non-template ones participate in overloading. [Function template](https://en.cppreference.com/w/cpp/language/function_template) has a lot of insight, and a couple of quick examples could be found in the [Overload resolution of function template calls](https://learn.microsoft.com/en-us/cpp/cpp/overload-resolution-of-function-template-calls) article, but a summary is enough for now: _both template and non-template functions are considered during an overload resolution to find the best match possible_.
+Both template and non-template functions participate in overloading. [Function template](https://en.cppreference.com/w/cpp/language/function_template) reference has a lot of insight, [Overload resolution of function template calls](https://learn.microsoft.com/en-us/cpp/cpp/overload-resolution-of-function-template-calls) article has a couple of quick examples, but a summary is enough for now: _both template and non-template functions are considered during an overload resolution to find the best match possible_. 
 
 {{< highlight cpp>}}// not a template. This will be the best match for makeString(3), 
 // unless we explicitly specify that we want a template: makeString<int>(3)
@@ -164,7 +164,7 @@ std::string makeString(long double d) { return std::to_string(d); }
 
 ### The problem
 
-In the middle of writing the copy-paste above, a developer could come to thought that it could easily be replaced by another template. The only complication is that given call `makeString(3)`, the compiler would not know which one to instantiate until it results in a compilation failure. 
+In the middle of writing the copy-paste above, a reader might come across the idea of creating a single template instead. However, a problem arises when the compiler is unsure which template to instantiate for a call like `makeString(3)`, leading to a compilation failure.
 
 {{< highlight cpp>}}
 template <typename Object>
@@ -188,13 +188,43 @@ main.cpp:21:40: error: call of overloaded ‘makeString(int)’ is ambiguous
 */
 {{< /highlight >}}
 
-One might expect the compiler to choose the correct overload by the function definition, but the only part that is being considered during the overload resolution is the declaration. There is a great article about the [overload resolution rules](https://en.cppreference.com/w/cpp/language/overload_resolution) that could easily carry you away for several evenings, but in general, we must provide a way to distinguish overloads in the declaration. 
+During the overload resolution, the compiler examines only the function declarations, requiring the developer to provide a means of distinguishing overloads using function declarations only. 
+
+<details>
+<summary>Spoiler: we could have used the code above almost as it is if we had read the Concepts section in advance</summary>
+{{< highlight cpp>}}
+
+// concepts HasToString, IsNumeric, and IsString should be defined above
+
+template <HasToString Object>
+std::string makeString(Object&& object) 
+{
+    return std::forward<Object>(object).to_string();
+}
+
+std::string makeString(IsNumeric auto value)
+{
+    return std::to_string(value);
+}
+
+template <IsString String>
+std::string makeString(String&& s) 
+{
+    return std::string(std::forward<String>(s));
+}
+{{< /highlight >}}
+</details>
+
+
+For a deeper grasp of templates, we'll proceed with <abbr title="Substitution Failure Is Not An Error">SFINAE</abbr>: a more verbose solution that was prevalent before the concepts appeared in C++20. However, readers who are eager to move ahead may skip this section and proceed directly to concepts.
 
 ### Substitution Failure Is Not An Error: a harder, pre-C++20 approach
 
-In fact, if the compiler failed to perform a template parameter substitution to the function declaration, this considered to be not-an-error so the function is silently ignored. That's what [Substitution Failure Is Not An Error](https://en.cppreference.com/w/cpp/language/sfinae) stands for. 
+During overload resolution, the compiler will ignore the declaration if impossible to substitute the template parameter into it. That concept is known as [Substitution Failure Is Not An Error](https://en.cppreference.com/w/cpp/language/sfinae).
 
-Using wit and a little imagination, let's come up with a solution: the member function template's declaration should involve the call to a `to_string()` member function, thus making it uneligible to substitute it for `int`. And the template using `std::to_string()` should involve `std::to_string` to ensure that there is an appropriate call for conversion using std library.
+Using wit and a little imagination, come up with a solution:
+ * Incorporate an `object.to_string()` member function call into the declaration of `std::string makeString(const Object& object)` to prevent substitution of `[Object = int]`.
+ * Ensure that the declaration of `std::string makeString(Numeric value)` involves `std::to_string(value)` to prevent substitution in case of no such `std::to_string` overload before the compiler fails to compile the function body.
 
 There are a few possible solutions:
 
@@ -236,15 +266,13 @@ auto makeString(Numeric value) -> decltype(std::to_string(value))
 
 Here, an `auto` return type froces the compiler to look at the trailing return type, so it will detect the type of expression on the right of `->`, for example `decltype(object.to_string())`. If the substituition fails, the function is omitted from the overloads candidate list. That's simple. 
 
+There is a `std::enable_if` template that could solve the same problem, but in my opinion, it’s more verbose. Therefore, I’d reserve its usage until it’s truly necessary. 
+
 Once again, compile, run, enjoy: `a: A; b: B{1}; pi: 3; pi(double): 3.141593`. We've spent some time on it, it seems working and I think, <abbr title="a polite way to say it's far from finished">it's a good start<abbr>. 
 
-### Concepts: a C++ 20 approach
+## Collections support in makeString()
 
-Just a honor mention: concepts make template metaprogramming a lot easier and concise, but let's craft some code and use-cases in advance. All the code written in the chapters below will be updated to use concepts in the Charper __TODO__.
-
-## makeString() and collections
-
-Now we could implement a containers support to add more fun and a bit of complexity to our makeString(). First, alter out test code with some cases:
+Let's level up makeString() with support for generic containers and amp up the coding fun. First, alter out test code with some cases:
 {{< highlight cpp>}}
 // main.cpp
 #include <vector>
@@ -261,7 +289,9 @@ Now we could implement a containers support to add more fun and a bit of complex
               << "; zs: " << makeString(zs)
               << std::endl;
 {{< /highlight >}} 
-Of course, it won't compile because out two templates aren't enough, so the trird one is on the way. Usually, I start writing rather than thinking, but in this case we had to do it smart. A collection could be a `vector`, a `set`, a C-array, but in generic case it is something _iterable_. Thus we need a template what will accept something iterable and iterate on it. Now, start typing:
+Of course, the code is missing the necessary template. I like diving right into coding without much thought, but in this case, let's be clever. A collection could be a vector, a set, or a C-array, but in a generic case, it is something _iterable_. We could use `std::begin` on something iterable. Thus we need a template that will accept something compatible with `std::begin` and iterate on it. 
+
+Now, start typing: 
 {{< highlight cpp>}}
 // makeString.hpp
 // ...
@@ -278,17 +308,19 @@ auto makeString(const Iterable& iterable)
     }
 
     return result;
-}{{< /highlight >}}Just in case, a quick note (1): that's a template that can accept the something that could be passed to `std::begin`, and return the same type as the `makeString` for the first element of that collection. 
+}{{< /highlight >}}
+Just in case, a quick note (1): that's a template that can accept the something that could be passed to `std::begin`, and return the same type as the `makeString` for the first element of that collection. 
+
 Compile, run, so far so good:
 
     a: A; b: B{1}; pi: 3.141593
     xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
 
-The reader may be happy with this code, and it's okay: that may mean that there is no professional deformation has been developed. One might see, and it's okay, too. 
+However, that code has a pitfall we're about to discover in the next section. 
 
-## makeString() for strings
+## String parameter support in makeString()
 
-Just in case, why don't? It might help us simplify makeString() usage in other termplates. First of all, add some test cases:
+Just in case, why don't? It might streamline the makeString() usage in other templates. Let's start by adding some test cases:
 {{< highlight cpp>}}
 // main.cpp
 // ...
@@ -297,17 +329,28 @@ Just in case, why don't? It might help us simplify makeString() usage in other t
               << makeString(std::string_view("world")) 
               << makeString(std::string("!!1")) 
               << std::endl;
-{{< /highlight >}} Compile, run, and surprisingly, it works! But not the expected way...
+{{< /highlight >}}
+Compile, run, and brace yourself for a surprise: it works! But not quite as intended...
+{{< highlight cpp "hl_lines=3">}}
+a: A; b: B{1}; pi: 3.141593
+xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
+72;101;108;108;111;44;32;0119;111;114;108;10033;33;49
+{{< /highlight >}}
 
-    a: A; b: B{1}; pi: 3.141593
-    xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
-    72;101;108;108;111;44;32;0119;111;114;108;10033;33;49
+Well, strings are iterable containers of chars. We also learned from the [Integer Promotions](https://en.cppreference.com/w/c/language/conversion) chapter on the cppreference chapter on the cppreference that compiler promotes chars to integers when char overloading is absent. To address the issue, exclude the template for containers from matching string types.
 
-Of course, these strings are iterable container and they will be treated as a container of char. Also, it might have been obvious if we'd read the [Integer Promotions](https://en.cppreference.com/w/c/language/conversion) chapter on the cppreference, that chars have been promoted to ints. So we have to disable container's template for strings as well. 
+Also, it could be reasonable to mark the `makeString(char)` as the deleted function to secure the pitfall forewer:
+{{< highlight cpp>}}std::string makeString(char c) = delete;{{< /highlight >}}
+{{< highlight cpp>}}
+[build] makeString.hpp:62:6: note: candidate template ignored: substitution failure
+          [with Iterable = const char (&)[8]]: call to deleted function 'makeString'
+[build] auto makeString(Iterable&& iterable) -> decltype(makeString(*std::begin(iterable))) 
+[build]      ^                                           ~~~~~~~~~~
+{{< /highlight >}}
 
-That's a good time to remember about the type traits. 
+That's a good time to remember about the type traits and `std::enable_if`. 
 
-### type traits and enable_if: a way to specialize template on a trait or a condition 
+### Type traits and enable_if: a way to specialize template on a trait or a condition 
 
 A solution is to restrict container's `makeString` so it will fail substitution on strings, and write a new one. Consider that "string" is `std::string`, `std::string_view`, `char*`, `const char*`. Let's explress this using C++:
 
@@ -363,7 +406,7 @@ inline constexpr bool isString = impl::isString<
                                     Wheel::remove_cv_t<T>
                                 >; 
 }
-{{< /highlight >}} ... but we've already developed a habit of looking into a [cppreference.com](https://en.cppreference.com/w/cpp/header/type_traits) in advance, so we'll use `std::remove_cv_t` and `std::enable_if_t` instead if reinventing the wheel:
+{{< /highlight >}} However, we've already developed a habit of looking into a [cppreference.com](https://en.cppreference.com/w/cpp/header/type_traits) in advance, so we'll use `std::remove_cv_t` and `std::enable_if_t` instead if reinventing the wheel:
 {{< highlight cpp>}}
 // makeString.hpp
 #pragma once
@@ -429,12 +472,13 @@ auto makeString(const String& s)
 }
 {{< /highlight >}}
 Now compile, run, swear:
+{{< highlight cpp "hl_lines=3">}}
+a: A; b: B{1}; pi: 3.141593
+xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
+72;101;108;108;111;44;32;0world!!1
+{{< /highlight >}}
 
-    a: A; b: B{1}; pi: 3.141593
-    xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
-    72;101;108;108;111;44;32;0world!!1
-
-### getting an insight of what does the template expand to
+### Getting an insight of what does the template expand to
 
 According to output, `"Hello, "` were treated as a container. It could be easier to understand what's happening using some tricks. There is at least a couple ways: upload a minimal __compilable__ example to a compiler analyzing tool, or produce an intentional failure with a descriptive error message. 
 
@@ -477,7 +521,7 @@ It's quite obvious from the output above that `makeString("Hello, ")` is actuall
 
 #### Intentional compilation failure
 
-It could happen, however, that code should not be submitted elsewhere or is does not compile. In this case, an intentional compilation failure could make an insight on the deduced types and values. A deleted function will provide a good error context when called while undefined struct will provide an insight when instantiated:
+It could happen, however, that code should not be submitted elsewhere or is does not compile. In this case, an intentional compilation failure could make an insight on the deduced types and values. A deleted function will provide a good error context when called, while undefined struct will provide an insight when instantiated:
 {{< highlight cpp>}}
 // ...
 template <typename... Args> bool fail_function(Args&&... args) = delete; 
@@ -488,7 +532,7 @@ static fail_struct< traits::isString<decltype("Hello, ")> > test2 = {};  // (2)
 {{< /highlight >}}
 
 And here is the compilation output:
-{{< highlight cpp>}}
+{{< highlight cpp "hl_lines=2 6">}}
 error: use of deleted function ‘bool fail_function(Args&& ...) 
        [with Args = {const char (&)[8]}]’
    40 | static bool test1 = fail_function("Hello, ");                            // (1)
@@ -497,7 +541,9 @@ error: use of deleted function ‘bool fail_function(Args&& ...)
 error: variable ‘fail_struct<false> test2’ has initializer but incomplete type
    41 | static fail_struct< traits::isString<decltype("Hello, ")> > test2 = {};  // (2)
       |                                                             ^~~~~
-{{< /highlight >}}Here it's quite obvious that `"Hello, "` is a `const char[8]` despite it's eligible for implicit conversion to the `const char*` and that `isString<char[8]> == false`.
+{{< /highlight >}}Let's extract the insight from the error message:
+* in `fail_function("Hello, ")`, argument type is a reference to a `const char[8]`. Despite it's eligible for implicit conversion to the `const char*` it is different from the `const char*`.
+* in the `fail_struct< traits::isString<...> >` variable, argument is `false`, so the result of `traits::isString<...>` is false.  
 
 ### Finally, a makeString that accepts a string and works as expected
 
@@ -611,16 +657,17 @@ auto makeString(const String& s)
     return std::string(s);
 }
 {{< /highlight >}}
-
-    a: A; b: B{1}; pi: 3.141593
-    xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
-    Hello, world!!1
+{{< highlight cpp>}}
+a: A; b: B{1}; pi: 3.141593
+xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
+Hello, world!!1
+{{< /highlight >}}
 
 Now criticize: it's still a good start! At least, the problem is that the `std::string` is also constructed from the parameter, even if there is a temporary that could be perfectly forwarded to a constructor. That brings us to the next chapter. 
 
 ## Perfect forwarding and std::forward
 
-In the code below, a temporary is made by `getSomeString()` and bound to an [lvalue-reference](https://en.cppreference.com/w/cpp/language/value_category) parameter. Then the std::string constructor copies the referenced string to a return value. Thanks to a [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision), no further copies were made. In the upshot, one unnecessary copy is made.
+In the code below, a temporary is made by `getSomeString()` and bound to an [lvalue-reference](https://en.cppreference.com/w/cpp/language/value_category) parameter. Then the `std::string` constructor copies the referenced string to a return value. Thanks to a [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision), no further copies were made. In the upshot, one unnecessary copy is made.
 
 {{< highlight cpp>}}
 template <typename String>
@@ -637,7 +684,7 @@ std::string getSomeString();
 std::cout << makeString(getSomeString());
 {{< /highlight >}}
 
-The problem is more than just an optimization, because there are types that a non-copyable, e.g. `std::unique_ptr'. 
+The problem is more than just an optimization, because there could be a non-copyable type, e.g. `std::unique_ptr`. 
 Fortunately, we can use rvalue reference to catch a temporary without moving it and further move a templorary to an `std::string` constructor which steals its content without copying. Moreover, in C++ we have the [_universal (or forwarding) reference_](https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers), that will accept exactly the same reference type (l/r-value, const or non-const) as has been passed by the caller. That's what <abbr title="universal reference">`&&`</abbr> on the template parameter does. I strongly encourage the reader to take a look at the great article above.
 
 
@@ -668,7 +715,7 @@ Thoroughful developer may consifer all the possible cases:
 
 It might sound complicated, but that's exactly what `std::forward<T>` does. It's a simple type cast to use that casts a function parameter to a whatever is was at the function invocation. So, a fast developer just uses `std::forward` for universal reference whenever a possible move is intended. 
 
-### a forwarding pitfall: a temporary may be 'consumed' and invalidated by the calee
+### A forwarding pitfall: a temporary may be 'consumed' and invalidated by the calee
 
 A cautious one would warn us, however, that wherever `std::forward` is used, a move may occur. So a variable should never be used after forwarding it:
 {{< highlight cpp>}}#include <string>
@@ -692,9 +739,9 @@ int main()
 }
 {{< /highlight >}}
 
-### temporary containers
+### Temporary containers
 
-A tricky case is a container that is passed as rvalue. Althoigh the container may be a temporary, its elements are constructed in a usual way (for exmple, it's possible to get an address of the element) so they are treated like lvalues. Thus, in order to steal elements' content from a temporary container, a forcible `std::move` should be used: 
+A tricky case is a container that is passed as rvalue. Althoigh the container may be a temporary, its elements are constructed in a usual way (for example, it's possible to get an address of the element) so they are treated like lvalues. Thus, in order to steal elements' content from a temporary container, a forcible `std::move` should be used: 
 
 {{< highlight cpp>}}
 // will fail substitution if `traits::isString<Iterable>`
@@ -711,7 +758,7 @@ auto makeString(Iterable&& iterable)
         if (!result.empty())
             result += ';';
 
-        // a constexpr if, so the compiler car omit unused branch and
+        // a constexpr if, so the compiler can omit unused branch and
         // allow non-copyable types usage
         if constexpr (std::is_rvalue_reference_v<decltype(iterable)>)
             result += makeString(std::move(i));
@@ -775,7 +822,7 @@ auto makeString(Iterable&& iterable)
         if (!result.empty())
             result += ';';
 
-        // a constexpr if, so the compiler car omit unused branch and
+        // a constexpr if, so the compiler can omit unused branch and
         // allow non-copyable types usage
         if constexpr (std::is_rvalue_reference_v<decltype(iterable)>)
             result += makeString(std::move(i));
@@ -862,7 +909,7 @@ struct NonCopyable
     std::string to_string() &&       { return std::move(m_s); }
 };
 {{< /highlight >}} 
-### overloading member functions on reference qualifiers
+### Overloading member functions on reference qualifiers
 
 `NonCopyable::to_string()` functions have a ref-quilifier that allows compiler to choose a specific overloading based on refevence type of `this`. A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
 {{< highlight cpp>}}#include <iostream>
@@ -882,7 +929,7 @@ int main()
 }{{< /highlight >}} 
 Regarding the `NonCopyable::to_string()`, in case of calling it on a temporary, it's safe to assume that the temporary will be obsolete after the call, so we can steal its content by moving the `NonCopyable::m_s` into a return value. Of course, we still don't need `&&` at the return type, because the object returned by value is rvalue itself.  
 
-Perhaps, that was the only time since '11 that I've seen justified use of return `std::move`, but I'm already prettu sure that the reader is familiar with the [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision) that usually works better that `std::move` for the return value[^return-move].
+Perhaps, that was the only time since '11 that I've seen justified use of return `std::move`, but I'm already pretty sure that the reader is familiar with the [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision) that usually works better that `std::move` for the return value[^return-move].
 
 [^return-move]: actually, a copy elision is usually better that moving a return value, bacause the object will be constructed already in the scope of the caller without move construction. It also donsn't take any references of the return value thus making the optimizer's work easier. 
 
