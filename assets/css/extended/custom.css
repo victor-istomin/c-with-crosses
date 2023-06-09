@@ -5,6 +5,9 @@
   --monospace: Menlo,Monaco,Consolas,Courier New,Courier,monospace;
   --accent-underline: rgb(255 , 171, 63);
 
+  --code-bg: #f6f8fa;
+
+
   --link-hover-color: #4a7ae3;
   --link-underline-shadow: 0 1px 0 var(--link-color);
   --link-hover-underline-color: var(--link-hover-color);
@@ -12,7 +15,7 @@
 }
 
 .dark {
-
+  --code-bg: rgb(44, 44, 48);
   --link-background-color: #4251746d;
   --link-color: var(--primary);
   --link-hover-color: #4a7ae3;
@@ -71,6 +74,11 @@ abbr {
   /* todo: https://bitsofco.de/making-abbr-work-for-touchscreen-keyboard-mouse/ */
   text-decoration-color: var(--accent-underline); /* Change the color here */
   text-decoration-thickness: 2px;
+}
+
+.chroma .hl
+{
+  background-color: #fff5dd;
 }
 
 .dark .chroma .hl

@@ -10,12 +10,12 @@ draft: false
 #description: "Desc Text. Trying **bold**, or even `code`"
 #canonicalURL: "https://canonical.url/to/page"
 ---
-Imagine a power to convert everything to a string: integers, vectors, booleans - all transformaed into a message that we could output wherever you want. Seems handy and not too hard, so let's dive into it -- this was my first thought when writing a debug variable watcher for my pet project.
+Imagine a power to convert everything to a string: integers, vectors, booleans - all transformed into a message to output wherever we want. Seems handy and not too hard, so let's dive into it -- this was my first thought when writing a debug variable watcher for my pet project.
 
 Although the expectation of making something easy may result in a few sleep-deprived nights, I encourage the reader to embark on this journey through basic template programming concepts.
 
 Expected prerequisites are:
- - A compiler with decent support for C++20: MSVC 2022, clang 14, or gcc 11 would be good, as we aim for a future-oriented experience, not dwelling in legacy code.
+ - A compiler with decent support for C++20: MSVC 2022, clang 14, or gcc 11 would be good, as we aim for a future-oriented experience, not dwelling on legacy code.
  - A basic familiarity with C++ template syntax: we've all written something like `template <typename T> T min(T a, T b);`, aren't we?[^typename]
 
 Throughout the journey, we'll progress from a trivial attempt to a satisfying solution, highlighting pitfalls and techniques along the way. So don't be alarmed if the code doesn't look great in the early iterations -- it's all part of the plan.
