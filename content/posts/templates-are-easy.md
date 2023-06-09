@@ -16,7 +16,7 @@ Although the expectation of making something easy may result in a few sleep-depr
 
 Expected prerequisites are:
  - A compiler with decent support for C++20: MSVC 2022, clang 14, or gcc 11 would be good, as we aim for a future-oriented experience, not dwelling on legacy code.
- - A basic familiarity with C++ template syntax: we've all written something like `template <typename T> T min(T a, T b);`, aren't we?[^typename]
+ - A basic familiarity with C++ template syntax: we've all written something like `template <typename T> T min(T a, T b);`, haven't we?[^typename]
 
 Throughout the journey, we'll progress from a trivial attempt to a satisfying solution, highlighting pitfalls and techniques along the way. So don't be alarmed if the code doesn't look great in the early iterations -- it's all part of the plan.
 
@@ -30,10 +30,7 @@ Having a variable of type T, make a function `makeString(T t)` that will produce
 
 Regarding extensibility, I'd like `makeString` to convert an object to string by using object's `std::string to_string() const` member function if it's present. It's not always possible, so fall-back to overloading or specialization if needed.
 
-I like the <abbr title="non-member function, e.g. `std::string makeString(Point p);`"> free function</abbr> approach because it doesn't encofre requirement on the user's type, but it requires the user to think about passing a parameter to it.
-
-
-## A something to start with
+## Something to start with
 
 ### Setup a project
 
@@ -47,7 +44,7 @@ add_executable(makeString main.cpp)
 set(CMAKE_CXX_EXTENSIONS OFF)      # no vendor-specific extensions
 set_property(TARGET makeString PROPERTY CXX_STANDARD 20)
 
-# ask a compiler to be more demanding
+# Ask a compiler to be more demanding
 if (MSVC)
     target_compile_options(makeString PUBLIC /W4 /WX /Za /permissive-)
 else()
@@ -231,9 +228,9 @@ Using wit and a little imagination, come up with a solution:
 
 There are a few possible solutions:
 
-#### 1. The first (1) solution depends on a result of a `to_string()` member function call on the first parameter.
+#### 1. Depend on a result of the `to_string()` member function call in the type parameter.
 {{< highlight cpp>}}
-// (1) will match only types with to_string() member function
+// will match only types with to_string() member function
 template <typename Object,
           typename DummyType = decltype(std::declval<Object>().to_string())>
 std::string makeString(const Object& object)
@@ -244,9 +241,9 @@ std::string makeString(const Object& object)
 
 The code above uses a `DummyType` that is the same as the type of `Object::to_string()` member function. Substitution will fail if there is no `Object::to_string()` thus excluding the template from the overloading resolution.
 
-#### 2. SFINAE and the trailing return type: access parameter's type during the substitution
+#### 2. Trailing return type: access the function parameter name during the substitution
 
-One could wonder, why don't we use function parameter values to enforce SFINAE? That's becasue syntaxically we're enforcing it before the function parameters definition. Using <abbr title="auto foo(int x) -> trailing-return-type;">trailing return type</abbr> we could defer the SFINAE to the point where the function parameters are declared.
+One could wonder, why don't we use parameter variable names to enforce SFINAE? That's becasue syntaxically we're enforcing it before the function parameters definition. Using <abbr title="auto foo(int x) -> trailing-return-type;">trailing return type</abbr> we could defer the SFINAE to the point where the function parameters are declared.
 
 That's my favorite way to use SFINAE using C++ 17, prior to concepts introduction.
 
@@ -340,7 +337,7 @@ xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
 72;101;108;108;111;44;32;0119;111;114;108;10033;33;49
 {{< /highlight >}}
 
-Well, strings are iterable containers of chars. We also learned from the [Integer Promotions](https://en.cppreference.com/w/c/language/conversion) chapter on the cppreference chapter on the cppreference that compiler promotes chars to integers when char overloading is absent. To address the issue, exclude the template for containers from matching string types.
+Well, strings are iterable containers of chars. We also learned from the [Integer Promotions](https://en.cppreference.com/w/c/language/conversion) chapter on the cppreference that compiler promotes chars to integers when `char` overloading is absent. To address the issue, exclude the template for containers from matching string types.
 
 Also, it could be reasonable to mark the `makeString(char)` as the deleted function to secure the pitfall forewer:
 {{< highlight cpp>}}std::string makeString(char c) = delete;{{< /highlight >}}
@@ -610,7 +607,8 @@ int main()
               << std::endl;
 }{{< /highlight >}}
 
-{{< highlight cpp>}}// makeString.hpp
+{{< highlight cpp>}}
+// makeString.hpp
 #pragma once
 #include <string>
 #include <type_traits>
@@ -983,9 +981,9 @@ std::string makeString(String&& s)
 
 // a concept uses requires clause: code in braces should compile
 template <typename T>
-concept HasStdConvestion = requires (T number) { std::to_string(number); };
+concept HasStdConversion = requires (T number) { std::to_string(number); };
 
-std::string makeString(HasStdConvestion auto number)
+std::string makeString(HasStdConversion auto number)
 {
     return std::to_string(number);
 }
@@ -999,7 +997,7 @@ A few explanations below:
 
 ### Concepts: conjunctions and disjunctions
 
-Now the code can be further clean up using `<concepts>` instead of hand-written traits. Also, drop the `traits` namespace and rewrite every function declaration to use concepts instead of declarations. Here we go:
+Now the code can be further cleaned up using `<concepts>` instead of hand-written traits. Also, drop the `traits` namespace and rewrite every function declaration to use concepts instead of declarations. Here we go:
 
 * Assume that type `T` is string, if `std::string` is `std::constructible_from` it: 
 {{< highlight cpp>}}
@@ -1013,12 +1011,12 @@ std::string makeString(String&& s)
 }
 {{< /highlight >}}
 
-* `HasStdConversion` will require the `std::to_string` could be called on its argument:
+* `HasStdConversion` will require that `std::to_string` could be called on its argument:
 {{< highlight cpp>}}
 template <typename T>
-concept HasStdConvestion = requires (T number) { std::to_string(number); };
+concept HasStdConversion = requires (T number) { std::to_string(number); };
 
-template <HasStdConvestion Numeric>
+template <HasStdConversion Numeric>
 std::string makeString(Numeric number)
 {
     return std::to_string(number);
@@ -1074,7 +1072,7 @@ template <typename T>
 concept IsString = IsContainer<T> && std::constructible_from<std::string, T>;
 
 template <typename T>
-concept HasStdConvestion = requires (T number) { std::to_string(number); };
+concept HasStdConversion = requires (T number) { std::to_string(number); };
 
 template <typename T>
 concept HasToString = requires (T&& object) 
@@ -1083,7 +1081,7 @@ concept HasToString = requires (T&& object)
 };
 
 
-template <HasStdConvestion Numeric>
+template <HasStdConversion Numeric>
 std::string makeString(Numeric number)
 {
     return std::to_string(number);
@@ -1204,7 +1202,7 @@ This way, the ambiguity is resolved by introducing a new rule, preserving the li
 
 # Variadic templates
 
-There is another topic the developer could greatly benefit when using carefully. Back in the days, we had a functions with variadic arguments count. Still there are printf-like set of functions, where developer feeds variable amount of parameter, and the compiler tries to save him from a numerous pitfalls. 
+There is another topic the developer could greatly benefit when using carefully. Back in the days, we had a functions with varied arguments count. Still there are printf-like set of functions, where developer feeds variable amount of parameter, and the compiler tries to save him from a numerous pitfalls. 
 
 For instance, Unreal Engine incorporates the format string checks into a custom preprocessor, while `std::format` or [`fmt`](https://github.com/fmtlib/fmt) provides us an error message that is [a bit cryptic](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAUgBMAIUtXyKxqiIEh1ZpgDC6egFc2TA3cAGQImbAA5PwAjbFIQAGZyAAd0JWIXJi9ffwMUtOchELDIthi4xIdsJwyRIhZSIiy/AJ57bEcCplr6oiKI6NiE%2BzqGppzWpRHe0P7SwfiASnt0H1JUTi5LeNDUXxwAajN4j0FSNhYiI9wzLQBBG9vQon3z0Ign/frgVHJ91CR6gAqQELB5mADsNju%2Bxh%2B0mmBAIFO5yIEEsFghVi0EIAIodITxcejfl9UKD4lD7uCcVwlvRuABWfgBLg6cjobgeWy2OErNbYQ4WeJ8chEbS0pYAaxADIZADpwRZpBYAJwqrQANgZyq0DI1hm40mZ4vZ3H4ShAWlF4qWcFgKAwbCSDFilGojudjDiu2MwAA%2BkRSD4mJLyDgAG4EdYANQI2AA7gB5JLMbgiuj0IixC0QKImqKheoATzT/ALrFIRcTUV0VTFvH4jo4wkTTHoJdZ/BwUR8wA8EnoFobYew5xMkk7YYIpDrBHD2CHbOw6iqPizpcownaJvoBCipGLXhwG8DBDYpaWNCMwCUsYTydTw8EwjEEk4MjkwmUak0k/0iSMEw0G5axDD3C1ICWdAkk6IcAFo4PhI4cXMaxbCFfh0HnUhSAIHAIIgJZKmqVwIHcMYWnIYIZhKMpclSdIhAo%2Bj8gyPpaMGCZ2lnIRulGbxmgMYjOj46ZigGOIJimZipJ6diJKkIi%2BXWRSDS4JlyBZNkOS4fZ1AADg1OCNWkP5AOAfYIEDYNJQWSz8GIMhBWFBZ%2BHrHRbQddAnRdCgqAgD1fJAcNUCSJI/XDHgVT9Iws0mP11BMkdIxjOMkxTFl0wYLNSBzPNJ3LYsN0Kytq1rJwNybZgiFbdsTW7Xt%2B3oQcNxwMdgAnNlCBnap50Xfhl1XddhyebdJ13fdDywDYRVPc8G0va9bzSh9Mv4Z9RHESQPw278NBNfRWnM4C0NAiaCKgmCMng%2BETpsaxYoXIhMOw3D8PgIjuJIgIyKYTwBPGKi/vkuZJOSBjOhk8HWMKGiFK4joamkgHKOEpG5Lh0GhOR7JUamEG6J4JTVhUom1I0rTMO4PSTJeJQQv2SKVTlR7JnswgSFIZyibcm0liQbAWBwOJCPIaVpGkOULHBBlwS0LQVXiaRZZVCW1KNchzx4eXNJNHTzQMdyJTUix%2BHPBkrUp00uF5ztbUQCAUBWIgkjXN0Au8z1YnCdgNkS0y2Hp1BGailmLiegaObIPCDA219ttkXaVH2v8DHjA8kgvcnjUnHTEzXV3nnQGgaYDoOQ%2BZ1nnggLwfK9bnXOtO3yEdkBncL93Aq9H2OG4AyjNpn0TEs6yQ0b7Ao7e2P5Hj99E/kPbfzZf9yHTlhM%2Bb%2Bl1Jz7TuHzl2132Yu9MM4zTKHiyrKDMfLNrr2ua2RZbY8/nBeF6g6UNM2ZUtvWzXsS0TcX5qXiDvKmNsgHG2wmkVw0ggA%3D%3D%3D) but much better than an Undefined Behavior in runtime. 
 
@@ -1230,14 +1228,16 @@ Let me describe this masterpiece line-by-line:
 * Line #1: a [parameter pack](https://en.cppreference.com/w/cpp/language/parameter_pack) is declared with an obvious syntax. A parameter pack is _is a template parameter that accepts __zero or more__ template arguments_.
 * Line #2: 'Args&&... args' is a forwarding reference to a pack.
 * Line #4: a special `sizeof...` that is evaluated at a compile-time to a number of pack's arguments.
-* Line #5: an obvious way to use.
-* Line #6 may be unobvious, but still correct: a pack of zero arguments is provided. 
+* Line #9: an obvious way to use.
+* Line #10 may be unobvious, but still correct: a pack of zero arguments is provided. 
 
 ### Parameter pack expansion and recursive functions
 
 Function arguments may contain a regular parameter alongside a parameter pack. For recursive functions, it provides a convenient way to break the recursion once the parameter pack is empty. Consider the `makeString(T&& first, Rest&&... rest)` in pseudocode:
  * `Rest` has parameters: `return makeString(first) + makeString(rest...);`.
  * `Rest` is an empty parameter pack: `return makeString(first)`; 
+
+While the pseudocode above demonstrates the idea, it does not apply to our code as-is: `makeString(T&& first, Rest&&... rest)` accepts one or more parameters. Since we already have a set of single-parameter implementations, an empty-pack call will be ambiguous. The solution is constraining the variadic overload to accept at least two parameters.
 
 Here is an approach from the past: a recursive function `makeString(First&& first, Second&& second, Rest&&... rest)` accepts at least two parameters plus an optional variadic pack. It converts the first parameter to a string and calls `makeString(second, rest...)` recursively. Once the `rest...` pack is empty, it expands to a non-recursive `makeString(second)` call.
 
@@ -1316,7 +1316,7 @@ Finally, I'd call it a day and summarize:
  * A template function can (and probably should) be constarined to let the compiler fail early and provide a concise error context in case of misuse. Even if it has no overloads yet.
  * SFINAE is a reasonable fallback when concepts are unavailable.
  * Use static_assert and intentional compilation failures to get an insight on template expansion in case of misunderstanding.
- * Perfect forwarding is our friend: it may better performance and relax 'copyable' requirement on the arguments.
+ * Perfect forwarding is our friend: it may offer better performance and relax 'copyable' requirement on the arguments.
     * ... but not for trivial types. Some times are cheaper to pass by-copy than by-reference. 
  * Variadic templates are useful way to process multiple arguments in a row. Fold expression might be even better.
 
@@ -1338,7 +1338,7 @@ template <typename T>
 concept IsString = IsContainer<T> && std::constructible_from<std::string, T>;
 
 template <typename T>
-concept HasStdConvestion = requires (T number) { std::to_string(number); };
+concept HasStdConversion = requires (T number) { std::to_string(number); };
 
 template <typename T>
 concept HasToString = requires (T&& object) 
@@ -1347,7 +1347,7 @@ concept HasToString = requires (T&& object)
 };
 
 
-template <HasStdConvestion Numeric>
+template <HasStdConversion Numeric>
 std::string makeString(Numeric number)
 {
     return std::to_string(number);
