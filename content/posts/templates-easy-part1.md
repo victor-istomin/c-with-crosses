@@ -6,20 +6,21 @@ summary: "A gentle introduction into advanced template techniques on a practical
 # aliases: ["/first"]
 tags: ["c++", "cpp", "templates", "sfinae", "concepts"]
 author: "Me"
-draft: true
+draft: false
 #description: "Desc Text. Trying **bold**, or even `code`"
 #canonicalURL: "https://canonical.url/to/page"
 ---
-Imagine an ability to convert everything to a string: having some ints, a point, and a bool, we'll get a message that we could output wherever we want it to. Seems handy and easy, so let's write it -- this was my first thought when writing a debug variable watcher for my pet project.
+Imagine a power to convert everything to a string: integers, vectors, booleans - all transformaed into a message that we could output wherever you want. Seems handy and not too hard, so let's dive into it -- this was my first thought when writing a debug variable watcher for my pet project.
 
-The idea was to watch on some variable during the function scope, and if it was changed at the end of the function, make a log record like:
- `m_crucialVariable: {1,"a"} -> {2,"b"}; m_insignificantOne: false -> true;`.
+Although the expectation of making something easy may result in a few sleep-deprived nights, I encourage the reader to embark on this journey through basic template programming concepts.
 
-Although the expectation of making something the easy way may lead to a couple of sleep-deprived nights, I encourage the reader to do the same: we'll try to make it a quick ride over basic template programming concepts.
+Expected prerequisites are:
+ - A compiler with decent support for C++20: MSVC 2022, clang 14, or gcc 11 would be good, as we aim for a future-oriented experience, not dwelling in legacy code.
+ - A basic familiarity with C++ template syntax: we've all written something like `template <typename T> T min(T a, T b);`, aren't we?[^typename]
 
-Expected prerequisetes are:
- - a compiler with decent support for C++20: MSVC 2022, clang 14, or gcc 11 would be good, as the intent is to gain some experience for the future rather than to write a legacy code here;
- - a basic knowledge of a C++ template syntax: we all wrote a kind of `template <typename T> T min(T a, T b);`, aren't we?[^typename]
+Throughout the journey, we'll progress from a trivial attempt to a satisfying solution, highlighting pitfalls and techniques along the way. So don't be alarmed if the code doesn't look great in the early iterations -- it's all part of the plan.
+
+There would be a [References](#references) section with all the links from an article. I'd treat it as a recommended reading. 
 
 [^typename]: Actually, some of use wrote `template <class T>` -- that doesn't matter, but I prefer a `template <typename T>` because the `int` is not a class name
 
@@ -97,8 +98,9 @@ std::string makeString(const Object& object)
     return object.to_string();
 }
 {{< /highlight >}}
+Now we can build it, run, and enjoy the output: `a: A; b: B{1}`. 
 
-Now can build it, run, and enjoy the output: `a: A; b: B{1}`
+This code has some problems, but let's pretend we don't see any until they arise during practical usage in the following sections of the article.
 
 ## Function template specialization
 
@@ -190,6 +192,8 @@ main.cpp:21:40: error: call of overloaded ‘makeString(int)’ is ambiguous
 
 During the overload resolution, the compiler examines only the function declarations, requiring the developer to provide a means of distinguishing overloads using function declarations only.
 
+As a general rule, I'd consider restricting all template functions to prevent the compiler from instantiating them for incompatible types. Following this rule prevents extensibility issues when adding new template function overloads.
+
 <details>
 <summary>Spoiler: we could have used the code above almost as it is if we had read the Concepts section in advance</summary>
 {{< highlight cpp>}}
@@ -213,10 +217,9 @@ std::string makeString(String&& s)
     return std::string(std::forward<String>(s));
 }
 {{< /highlight >}}
-</details>
+</details><br>
 
-
-For a deeper grasp of templates, we'll proceed with <abbr title="Substitution Failure Is Not An Error">SFINAE</abbr>: a more verbose solution that was prevalent before the concepts appeared in C++20. However, readers who are eager to move ahead may skip this section and proceed directly to concepts.
+For a deeper grasp of templates, we'll proceed with <abbr title="Substitution Failure Is Not An Error">SFINAE</abbr>: a more verbose solution that was prevalent before the concepts appeared in C++20. However, readers who are eager to move ahead may skip this section and proceed directly to the [perfect forwarding chapter](#perfect-forwarding-avoid-unnecessary-copying-and-allow-use-of-non-copyable-types) and then to [concepts](#concepts-a-modern-approach-to-set-requirements-on-a-template-type).
 
 ### Substitution Failure Is Not An Error: a harder, pre-C++20 approach
 
@@ -663,11 +666,11 @@ xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
 Hello, world!!1
 {{< /highlight >}}
 
-Now criticize: it's still a good start! At least, the problem is that the `std::string` is also constructed from the parameter, even if there is a temporary that could be perfectly forwarded to a constructor. That brings us to the next chapter.
+Now criticize: it's still _<abbr title="require iteration">a good start!</abbr>_ At least, the problem is that the `std::string` is also constructed from the parameter, even if there is a temporary that could be perfectly forwarded to a constructor. That brings us to the next chapter.
 
-## Perfect forwarding and std::forward
+## Perfect forwarding: avoid unnecessary copying and allow use of non-copyable types
 
-In the code below, a temporary is made by `getSomeString()` and bound to an [lvalue-reference](https://en.cppreference.com/w/cpp/language/value_category) parameter. Then the `std::string` constructor copies the referenced string to a return value. Thanks to a [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision), no further copies were made. In the upshot, one unnecessary copy is made.
+In the code below, a temporary is made by `getSomeString()` and bound to an [lvalue-reference](https://en.cppreference.com/w/cpp/language/value_category) parameter. The referenced string then copied to a return value. Thanks to a [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision), no further copies were made, but in the upshot, one unnecessary copy occurs.
 
 {{< highlight cpp>}}
 template <typename String>
@@ -684,9 +687,11 @@ std::string getSomeString();
 std::cout << makeString(getSomeString());
 {{< /highlight >}}
 
-The problem is more than just an optimization, because there could be a non-copyable type, e.g. `std::unique_ptr`.
-Fortunately, we can use rvalue reference to catch a temporary without moving it and further move a templorary to an `std::string` constructor which steals its content without copying. Moreover, in C++ we have the [_universal (or forwarding) reference_](https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers), that will accept exactly the same reference type (l/r-value, const or non-const) as has been passed by the caller. That's what <abbr title="universal reference">`&&`</abbr> on the template parameter does. I strongly encourage the reader to take a look at the great article above.
+In addition to suboptimal performance, the previous approach does not allow non-copyable types, such as `std::unique_ptr`. However, by leveraging rvalue or forwarding references, we can omit unnecessary copy and avoid the requirement of copyable type. The `std::string` constructor can then efficiently steal its content without unnecessary copying.
 
+While the only option for a non-template parameter is an rvalue overload, template parameters can utilize [_universal (or forwarding) references_](https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers). In essence, a forwarding reference accepts the same reference type (lvalue, rvalue, const, or non-const) as passed by the caller. A forwarding reference syntax is `TemplateType&& parameter`. 
+
+I strongly encourage looking at the great article above for additional details. 
 
 Just in case, a quick summary and we're going to fix our templates.
 | Parameter Type | Template               | Non-Template           |
@@ -707,18 +712,19 @@ auto makeString(Iterable&& iterable)
 template <typename String>
 auto makeString(String&& s)
 // ...
-{{< /highlight >}} Is that's it? Not yet. A function parameter in always an lvalue inside the funcion. But in order to allow `std::string` to steal temporary's content, we have to provide an rvalue when possible.
+{{< /highlight >}} Is that's it? Not yet. A function parameter is always an lvalue inside the function. But in order to allow `std::string` to steal temporary's content, we have to provide an rvalue _if possible_.
 
-Thoroughful developer may consifer all the possible cases:
- * a (const-)lvalue reference perameter: made from an lvalue reference, pass a (const-)lvalue reference further, because we should not invalidate it by stealing its content.
- * a non-reference parameter: made from an rvalue parameter at the call site, so it's fine to pass it via rvalue-reference to allow moving from it.
+Thoroughful developer may consider all the possible cases:
+ * an lvalue or (const-)lvalue reference is passed to makeString(): pass as an appropriate lvalue reference further, because we should not invalidate an lvalue by moving from it; 
+ * a temporary or another type of rvalue is passed to makeString(): fine to pass it via rvalue-reference to allow moving from it.
 
-It might sound complicated, but that's exactly what `std::forward<T>` does. It's a simple type cast to use that casts a function parameter to a whatever is was at the function invocation. So, a fast developer just uses `std::forward` for universal reference whenever a possible move is intended.
+It might sound complicated, but that's exactly what `std::forward<T>` does. It casts a function parameter to a whatever is was at the function invocation. So, a fast developer just uses `std::forward` for universal reference whenever a possible move is intended.
 
 ### A forwarding pitfall: a temporary may be 'consumed' and invalidated by the calee
 
-A cautious one would warn us, however, that wherever `std::forward` is used, a move may occur. So a variable should never be used after forwarding it:
-{{< highlight cpp>}}#include <string>
+However, a cautious developer would warn us that wherever `std::forward` is used, a move may occur. So a variable should never be used after forwarding:
+{{< highlight cpp "hl_lines=10 12" >}}
+#include <string>
 #include <cassert>
 #include <vector>
 
@@ -727,23 +733,30 @@ void foo(Arg&& a)
 {
     std::vector<std::string> v;
     for(int i = 0; i < 2; i++)
-        v.push_back(std::forward<Arg>(a)); // surprise on a 2nd iteration
+        v.push_back(std::forward<Arg>(a)); // surprise on the 2nd iteration
 
     assert(v.front() == v.back());         // fail
 }
 
 int main()
 {
-    auto getMessage = []() -> std::string { return "why do it asserts?"; };
+    auto getMessage = []() -> std::string { return "why does it fail?"; };
     foo(getMessage());
 }
 {{< /highlight >}}
+The example above may seem synthetic, but it does occur in the wild. Consider the following situation: 
+1. There is a callback that receives a parameter using perfect forwarding: `logCallback(std::forward<Event>(logEvent));`. Looks good and conventional.
+2. Later, a developer forgot to remove `std::forward` while implementing multiple callbacks support: `for (auto& sink : logSinks) sink.logCallback(std::forward<Event>(event));`. This oversight creates a ticking time bomb.  
+3. The issue goes unnoticed during basic testing with only a single callback or an lvalue reference.
+4. Undefined behavior occurs in rare case where multiple callbacks involve rvalue reference, leading to unexpected behavior.
+
+Thus a developer should have a strong intuition to remove `std::forward` once a possibility of multiple recipients of the forwarded value occurs.
 
 ### Temporary containers
 
-A tricky case is a container that is passed as rvalue. Althoigh the container may be a temporary, its elements are constructed in a usual way (for example, it's possible to get an address of the element) so they are treated like lvalues. Thus, in order to steal elements' content from a temporary container, a forcible `std::move` should be used:
+A tricky case is a container that is passed as rvalue. Although the container may be a temporary, its elements are constructed in a usual way (for example, it's possible to get an address of the element) so they are treated like lvalues. Thus, in order to steal elements' content from a temporary container, a forcible `std::move` should be used:
 
-{{< highlight cpp>}}
+{{< highlight cpp "hl_lines=17-21">}}
 // will fail substitution if `traits::isString<Iterable>`
 // or when can't evaluate the type of makeString(*begin(container))
 template <typename Iterable>
@@ -768,12 +781,16 @@ auto makeString(Iterable&& iterable)
     return result;
 }
 {{< /highlight >}}
-The similar problem is already solved in the STL, for example, `std::vector` may move old buffer content into a new buffer when resizing, but only if element's type has a noexcept move constructor[^noexcept-move]. There are several approaches here:
-a separate template could be extracted to incapsulate copy-or-move decision into a set of two overloads like `template <bool CanMove> copy_or_move(...);` where template function specialization could have been used when `if constexpr` was not available, but I think that the code above is just right in terms of readability.
+
+'if constexpr' in this context enables selecting a strategy in the compile-time based on the container's <abbr title="lvalue or rvalue">value category</abbr>. Unlike the regular `if` statement, only one branch of constexpr `if/else` is compiled at template instantiation, allowing for the use of a type that is either movable or copyable.
+
+The [MS STL implementation of std::vector::resize](https://github.com/microsoft/STL/blob/c8d1efb6d504f6392acf8f6d01fd703f7c8826c0/stl/inc/vector#L1529) utilizes this approach to choose between copy and move strategies. When resizing, it moves existing items to a new buffer if the value type has a 'noexcept' move constructor, and copies them otherwise[^noexcept-move].
+
+Also, there are alternative approaches. For instance, introducing a separate template to encapsulate the copy-or-move decision into two overloads is demonstrated in the `std::move_if_noexcept` [example on cppreference](https://en.cppreference.com/w/cpp/utility/move_if_noexcept).
 
 [^noexcept-move]: `std::vector` features strong exception safety guarantee: its remains unchanged if `resize()` throws an exception. In order to maintain that it has to keep initial buffer as a backup if element's type move constructor is not declated as `noexcept(true)`
 
-Bringing all the pieces together, a perfect forwarding makeString below:
+Bringing all the pieces together, let's look at the perfect forwarding makeString below:
 {{< highlight cpp "linenos=table,hl_lines=16">}}
 // makeString.hpp
 #pragma once
@@ -857,8 +874,8 @@ struct NonCopyable
     NonCopyable(NonCopyable&&) = default;
     NonCopyable(const NonCopyable&) = delete;
 
-    std::string to_string() const &  { return m_s; }
-    std::string to_string() &&       { return std::move(m_s); }
+    std::string   to_string() const &  { return m_s; }
+    std::string&& to_string() &&       { return std::move(m_s); }
 };
 
 int main()
@@ -870,23 +887,23 @@ int main()
     const std::set<float> ys = {4, 5, 6};
     const double zs[] = {7, 8, 9};
 
-    std::cout << "a: " << makeString(a) << "; b: " << makeString(b)
+    std::cout << "a: " << makeString(a) << "; b: " << makeString(b) 
               << "; pi: " << makeString(3.1415926) << std::endl
-              << "xs: " << makeString(xs) << "; ys: " << makeString(ys)
+              << "xs: " << makeString(xs) << "; ys: " << makeString(ys) 
               << "; zs: " << makeString(zs)
               << std::endl;
 
-    std::cout << makeString("Hello, ")
-              << makeString(std::string_view("world"))
-              << makeString(std::string("!!1"))
+    std::cout << makeString("Hello, ") 
+              << makeString(std::string_view("world")) 
+              << makeString(std::string("!!1")) 
               << std::endl;
 
     auto makeVector = []()
-    {
+    { 
         std::vector<NonCopyable> v;
-        v.emplace_back("a");
-        v.emplace_back(" non-copyable");
-        return v;
+        v.emplace_back("two ");
+        v.emplace_back(" non-copyables");
+        return v; 
     };
 
     std::cout << makeString(makeVector())
@@ -909,9 +926,12 @@ struct NonCopyable
     std::string to_string() &&       { return std::move(m_s); }
 };
 {{< /highlight >}}
+
+The `std::forward` here forwards the `object` to its `object.to_string()` member function, and corersponding `NonCopyable::to_string` methods feature the overloading on `*this` value category. This way we can allow an rvalue-overload of `NonCopyable::to_string` to steal the content of temporary avoiding unnecessary copying.
+
 ### Overloading member functions on reference qualifiers
 
-`NonCopyable::to_string()` functions have a ref-quilifier that allows compiler to choose a specific overloading based on refevence type of `this`. A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
+A ref-quilified member function allows compiler to choose a specific overloading based on refevence type of `*this`. A simple example from the corresponding chapter of the [cppreference](https://en.cppreference.com/w/cpp/language/member_functions):
 {{< highlight cpp>}}#include <iostream>
 
 struct S
@@ -929,8 +949,565 @@ int main()
 }{{< /highlight >}}
 Regarding the `NonCopyable::to_string()`, in case of calling it on a temporary, it's safe to assume that the temporary will be obsolete after the call, so we can steal its content by moving the `NonCopyable::m_s` into a return value. Of course, we still don't need `&&` at the return type, because the object returned by value is rvalue itself.
 
-Perhaps, that was the only time since '11 that I've seen justified use of return `std::move`, but I'm already pretty sure that the reader is familiar with the [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision) that usually works better that `std::move` for the return value[^return-move].
+Perhaps, that was the only time since 2011 that I've seen justified use of return `std::move`, because nowadays we may rely on guaranteed [copy elision](https://en.cppreference.com/w/cpp/language/copy_elision) that usually works better that `std::move` for the return value[^return-move].
 
-[^return-move]: actually, a copy elision is usually better that moving a return value, bacause the object will be constructed already in the scope of the caller without move construction. It also donsn't take any references of the return value thus making the optimizer's work easier.
+[^return-move]: a copy elision is better that moving a return value because the object will be constructed already in the scope of the caller without move construction. It also donsn't take any references of the return value thus making the optimizer's work easier.
 
-...
+There is an article on another interesting use case of ref-quilified member function on this blog: [Practical usage of ref-qualified member function overloading](../ref-qualifiers)
+
+## Concepts: a modern approach to set requirements on a template type
+
+Now it's time for a pivot: with C++20, we can avoid writing SFINAE code and embrace concepts. 
+
+A concept is a named set of requirements. There's a detailed [article on cppreference](https://en.cppreference.com/w/cpp/language/constraints), but here's the gist: it allows distinguishing between multiple template overloads based on the template parameter, similar to SFINAE. However, concepts offer enhanced clarity by separating the declaration from usage and enabling easier combinations, resulting in a more concise code.
+
+### A trivial trait-based concept and a requirement
+
+Let's make minimal modifications to our `makeString(String&& s)` and `makeString(Numeric value)` overloads and take a look at the first attempt:
+{{< highlight cpp "linenos=table,hl_lines=9 11-12 19 21">}}
+namespace traits
+{
+template <typename T> 
+inline constexpr bool isString = std::is_constructible_v<std::string, T>;
+}
+
+// a concepts that uses a constexpr bool trait to check its applicability
+template <typename T>
+concept IsString = traits::isString<T>;
+
+template <IsString String>
+std::string makeString(String&& s) 
+{
+    return std::string(std::forward<String>(s));
+}
+
+// a concept uses requires clause: code in braces should compile
+template <typename T>
+concept HasStdConvestion = requires (T number) { std::to_string(number); };
+
+std::string makeString(HasStdConvestion auto number)
+{
+    return std::to_string(number);
+}
+{{< /highlight >}}
+
+A few explanations below:
+* Line #9: a trivial concept is created to demonstrate the usage of a constexpr bool as a requirement. Although the `<concepts>` provides `std::constructible_from`, we'll use a custom trait-based concept as a showcase. 
+* Line #11-12: `IsString` concept is used instead of the `typename` keyword to keep typing to a minimum. Please note that there is no more need for SFINAE or trailing return type. 
+* In line #19, a requirement is introduced: `HasStdConversion` is a concept that requires the compilation of `std::to_string(number);` with `T number` to ensure that the std::to_string conversion exists. Still not rocket science.
+* Line #21: `HasStdConversion` is utilized to constrain the `auto` type of the parameter. This approach is equivalent to the one from line #11-12 and requires even less tying. However, recarding the code clarity, my personal preference is to use the `template` keyword to clearly indicate that the following method is a template. 
+
+### Concepts: conjunctions and disjunctions
+
+Now the code can be further clean up using `<concepts>` instead of hand-written traits. Also, drop the `traits` namespace and rewrite every function declaration to use concepts instead of declarations. Here we go:
+
+* Assume that type `T` is string, if `std::string` is `std::constructible_from` it: 
+{{< highlight cpp>}}
+template <typename T>
+concept IsString = std::constructible_from<std::string, T>;
+
+template <IsString String>
+std::string makeString(String&& s) 
+{
+    return std::string(std::forward<String>(s));
+}
+{{< /highlight >}}
+
+* `HasStdConversion` will require the `std::to_string` could be called on its argument:
+{{< highlight cpp>}}
+template <typename T>
+concept HasStdConvestion = requires (T number) { std::to_string(number); };
+
+template <HasStdConvestion Numeric>
+std::string makeString(Numeric number)
+{
+    return std::to_string(number);
+}
+{{< /highlight >}}
+
+* `HasToString` is a concept that requires `object.to_string()` with `Object object` parameter to be valid and return something that is `std::convertible_to<std::string>`. In this case a requirement will check the expression type using another concept, in addition to a base requirement to compile the code in the braces:
+{{< highlight cpp "hl_lines=4">}}
+template <typename T>
+concept HasToString = requires (T&& object) 
+{ 
+    {object.to_string()} -> std::convertible_to<std::string>; 
+};
+
+template <HasToString Object>
+std::string makeString(Object&& object) 
+{
+    return std::forward<Object>(object).to_string();
+}
+{{< /highlight >}}
+
+* Finaly, the tricky part. Similarly to SFINAE approach, `IsContainer` is a requirement on type to be iterable: `requires (T&& container) { std::begin(container); }`. However, a string is a container, too, and this will lead to ambiguity when calling `makeString("hello")` because both overloads will match. There is a point in out code where [_requires clause_](https://en.cppreference.com/w/cpp/language/constraints#Requires_clauses) is useful to require a boolean constraint.
+{{< highlight cpp "hl_lines=5">}}
+template <typename T>
+concept IsContainer = requires (T&& container) { std::begin(container); };
+
+template <typename Iterable>
+    requires (IsContainer<Iterable> && !IsString<Iterable>)
+std::string makeString(Iterable&& iterable) 
+{
+    //...
+}
+{{< /highlight >}}
+
+I'd prefer, however, to define `IsContainer` just as something iterable, and `IsString` as a `IsContainer` that can be used to construct an `std::string`. This way when something is both `IsString` and `IsContainer`, the first one will have a priority because the more constrained concept is preferred by the compiler. 
+
+That are some great articles within-depht explanation of [conjunctions, disjunctions](https://akrzemi1.wordpress.com/2020/03/26/requires-clause/) and [ordering by constraints](https://akrzemi1.wordpress.com/2020/05/07/ordering-by-constraints/) that I highly recommend to look at. 
+
+Perhaps, it's a good point to summarize the code and sync-up with a reader's imagination by providing the full source:
+{{< highlight cpp >}}
+// makeString.hpp
+#pragma once
+#include <string>
+#include <type_traits>
+#include <concepts>
+
+template <typename T>
+concept IsContainer = requires (T&& container) { std::begin(container); };
+
+// IsString is more constrained than IsContainer, 
+// so it will have a priority wherever possible
+template <typename T>
+concept IsString = IsContainer<T> && std::constructible_from<std::string, T>;
+
+template <typename T>
+concept HasStdConvestion = requires (T number) { std::to_string(number); };
+
+template <typename T>
+concept HasToString = requires (T&& object) 
+{ 
+    {object.to_string()} -> std::convertible_to<std::string>; 
+};
+
+
+template <HasStdConvestion Numeric>
+std::string makeString(Numeric number)
+{
+    return std::to_string(number);
+}
+
+template <HasToString Object>
+std::string makeString(Object&& object) 
+{
+    return std::forward<Object>(object).to_string();
+}
+
+template <IsString String>
+std::string makeString(String&& s) 
+{
+    return std::string(std::forward<String>(s));
+}
+
+template <IsContainer Iterable>
+std::string makeString(Iterable&& iterable) 
+{
+    std::string result;
+    for (auto&& i : iterable)
+    {
+        if (!result.empty())
+            result += ';';
+
+        // a constexpr if, so the compiler can omit unused branch and
+        // allow non-copyable types usage
+        if constexpr (std::is_rvalue_reference_v<decltype(iterable)>)
+            result += makeString(std::move(i));
+        else 
+            result += makeString(i);
+    }
+    return result;
+}
+{{< /highlight >}}
+
+Compile, run: it works!
+
+### Ordering overloads by constraints 
+
+Speaking of extensibility, let's imagine that our `makeString` is a library header, and we're unwilling to modyfy it. In such a scenario, consider the class that is both `IsContainer` and `HasToString`:
+
+{{< highlight cpp "hl_lines=5-10 18">}}
+struct C
+{
+    std::string m_string;
+  
+    auto begin() const { return std::begin(m_string); }
+    auto begin()       { return std::begin(m_string); }
+    auto end() const   { return std::end(m_string); }
+    auto end()         { return std::end(m_string); }
+
+    std::string to_string() const { return "C{\"" + m_string + "\"}"; }
+};
+
+int main()
+{
+    // ...
+    std::cout << makeString(makeVector())
+              << std::endl
+              << makeString( C { "a container with its own to_string()" } )
+              << std::endl;
+
+}
+{{< /highlight >}}
+
+<details>
+<summary>There is an ambiguity in the <code>makeString(C{...})</code> call because the compiler cannot determine whether the <code>IsContainer</code> or <code>HasToString</code> overload is better to apply.</summary>
+{{< highlight cpp >}}
+[build] main.cpp:58:18: error: call to 'makeString' is ambiguous
+[build]               << makeString( C { "a container with its own to_string()" } )
+[build]                  ^~~~~~~~~~
+[build] makeString.hpp:37:13: note: candidate function [with Object = C]
+[build] std::string makeString(Object&& object) 
+[build]             ^
+[build] makeString.hpp:49:13: note: candidate function [with Iterable = C]
+[build] std::string makeString(Iterable&& iterable) 
+[build]             ^
+{{< /highlight >}}
+</details><br>
+
+Those familiar with the era of SFINAE can imagine the magnitude of the tragedy, and those who have already seen Andrzej's article on [ordering by constraints](https://akrzemi1.wordpress.com/2020/05/07/ordering-by-constraints/) can imagine the solution.
+
+The ambiguity arises because two constrained methods have the same priority, with neither constraint <abbr title="P subsumes Q if P contain all the elements of Q">subsuming</abbr> the other. The solution is straightforward: introduce a third overload that is more restrictive than the conflicting ones.  
+
+{{< highlight cpp "hl_lines=13-18 25">}}
+struct C
+{
+    std::string m_string;
+  
+    auto begin() const { return std::begin(m_string); }
+    auto begin()       { return std::begin(m_string); }
+    auto end() const   { return std::end(m_string); }
+    auto end()         { return std::end(m_string); }
+
+    std::string to_string() const { return "C{\"" + m_string + "\"}"; }
+};
+
+template <typename Container>
+    requires IsContainer<Container> && HasToString<Container>
+std::string makeString(Container&& c)
+{
+    return std::forward<Container>(c).to_string();
+}
+
+int main()
+{
+    // ...
+    std::cout << makeString(makeVector())
+              << std::endl
+              << makeString( C { "a container with its own to_string()" } )
+              << std::endl;
+}
+{{< /highlight >}}
+
+This way, the ambiguity is resolved by introducing a new rule, preserving the library implementation.
+
+# Variadic templates
+
+There is another topic the developer could greatly benefit when using carefully. Back in the days, we had a functions with variadic arguments count. Still there are printf-like set of functions, where developer feeds variable amount of parameter, and the compiler tries to save him from a numerous pitfalls. 
+
+For instance, Unreal Engine incorporates the format string checks into a custom preprocessor, while `std::format` or [`fmt`](https://github.com/fmtlib/fmt) provides us an error message that is [a bit cryptic](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAUgBMAIUtXyKxqiIEh1ZpgDC6egFc2TA3cAGQImbAA5PwAjbFIQAGZyAAd0JWIXJi9ffwMUtOchELDIthi4xIdsJwyRIhZSIiy/AJ57bEcCplr6oiKI6NiE%2BzqGppzWpRHe0P7SwfiASnt0H1JUTi5LeNDUXxwAajN4j0FSNhYiI9wzLQBBG9vQon3z0Ign/frgVHJ91CR6gAqQELB5mADsNju%2Bxh%2B0mmBAIFO5yIEEsFghVi0EIAIodITxcejfl9UKD4lD7uCcVwlvRuABWfgBLg6cjobgeWy2OErNbYQ4WeJ8chEbS0pYAaxADIZADpwRZpBYAJwqrQANgZyq0DI1hm40mZ4vZ3H4ShAWlF4qWcFgKAwbCSDFilGojudjDiu2MwAA%2BkRSD4mJLyDgAG4EdYANQI2AA7gB5JLMbgiuj0IixC0QKImqKheoATzT/ALrFIRcTUV0VTFvH4jo4wkTTHoJdZ/BwUR8wA8EnoFobYew5xMkk7YYIpDrBHD2CHbOw6iqPizpcownaJvoBCipGLXhwG8DBDYpaWNCMwCUsYTydTw8EwjEEk4MjkwmUak0k/0iSMEw0G5axDD3C1ICWdAkk6IcAFo4PhI4cXMaxbCFfh0HnUhSAIHAIIgJZKmqVwIHcMYWnIYIZhKMpclSdIhAo%2Bj8gyPpaMGCZ2lnIRulGbxmgMYjOj46ZigGOIJimZipJ6diJKkIi%2BXWRSDS4JlyBZNkOS4fZ1AADg1OCNWkP5AOAfYIEDYNJQWSz8GIMhBWFBZ%2BHrHRbQddAnRdCgqAgD1fJAcNUCSJI/XDHgVT9Iws0mP11BMkdIxjOMkxTFl0wYLNSBzPNJ3LYsN0Kytq1rJwNybZgiFbdsTW7Xt%2B3oQcNxwMdgAnNlCBnap50Xfhl1XddhyebdJ13fdDywDYRVPc8G0va9bzSh9Mv4Z9RHESQPw278NBNfRWnM4C0NAiaCKgmCMng%2BETpsaxYoXIhMOw3D8PgIjuJIgIyKYTwBPGKi/vkuZJOSBjOhk8HWMKGiFK4joamkgHKOEpG5Lh0GhOR7JUamEG6J4JTVhUom1I0rTMO4PSTJeJQQv2SKVTlR7JnswgSFIZyibcm0liQbAWBwOJCPIaVpGkOULHBBlwS0LQVXiaRZZVCW1KNchzx4eXNJNHTzQMdyJTUix%2BHPBkrUp00uF5ztbUQCAUBWIgkjXN0Au8z1YnCdgNkS0y2Hp1BGailmLiegaObIPCDA219ttkXaVH2v8DHjA8kgvcnjUnHTEzXV3nnQGgaYDoOQ%2BZ1nnggLwfK9bnXOtO3yEdkBncL93Aq9H2OG4AyjNpn0TEs6yQ0b7Ao7e2P5Hj99E/kPbfzZf9yHTlhM%2Bb%2Bl1Jz7TuHzl2132Yu9MM4zTKHiyrKDMfLNrr2ua2RZbY8/nBeF6g6UNM2ZUtvWzXsS0TcX5qXiDvKmNsgHG2wmkVw0ggA%3D%3D%3D) but much better than an Undefined Behavior in runtime. 
+
+Having that, why don't provide a variaric template for `makeString("xs: ", xs, "; and the double is: ", PI)`? At least, that's a nice excercise. 
+
+## Basic syntax and considerations
+
+{{< highlight cpp "linenos=table">}}
+template <typename... Args>
+constexpr int uselessCount(Args&&... args)
+{
+    return sizeof...(args);
+}
+
+int main(int argc, char**)
+{
+    return uselessCount(1,2,3) 
+          + uselessCount();
+}
+{{< /highlight >}}
+
+Let me describe this masterpiece line-by-line:
+* Line #1: a [parameter pack](https://en.cppreference.com/w/cpp/language/parameter_pack) is declared with an obvious syntax. A parameter pack is _is a template parameter that accepts __zero or more__ template arguments_.
+* Line #2: 'Args&&... args' is a forwarding reference to a pack.
+* Line #4: a special `sizeof...` that is evaluated at a compile-time to a number of pack's arguments.
+* Line #5: an obvious way to use.
+* Line #6 may be unobvious, but still correct: a pack of zero arguments is provided. 
+
+### Parameter pack expansion and recursive functions
+
+Function arguments may contain a regular parameter alongside a parameter pack. For recursive functions, it provides a convenient way to break the recursion once the parameter pack is empty. Consider the `makeString(T&& first, Rest&&... rest)` in pseudocode:
+ * `Rest` has parameters: `return makeString(first) + makeString(rest...);`.
+ * `Rest` is an empty parameter pack: `return makeString(first)`; 
+
+Here is an approach from the past: a recursive function `makeString(First&& first, Second&& second, Rest&&... rest)` accepts at least two parameters plus an optional variadic pack. It converts the first parameter to a string and calls `makeString(second, rest...)` recursively. Once the `rest...` pack is empty, it expands to a non-recursive `makeString(second)` call.
+
+{{< highlight cpp "linenos=table,hl_lines=8">}}
+// makeString.hpp
+// ... single-parameter implementations cut from the listing  ...
+
+template <typename First, typename Second, typename... Rest>
+std::string makeString(First&& first, Second&& second, Rest&&... rest)
+{
+    return makeString(std::forward<First>(first)) 
+         + makeString(std::forward<Second>(second), std::forward<Rest>(rest)...); 
+}
+
+// main.cpp
+// ... stripped ...
+std::cout << makeString("a ", 
+                        std::string_view("variadic " ), 
+                        std::string("with a double: "), 
+                        3.14)
+          << std::endl;
+{{< /highlight >}}
+
+Line #8 introduces a parameter pack expansion to the reader: compiler expands `expression(pack)...` to a comma-separated list of zero or more `expression(argument)`patterns. For example, `std::forward<Rest>(rest)...` expands to:
+* if `Rest` has no parameters: expands to nothing, ignoring the `std::forward<Rest>(rest)...` expression on line #8.
+* if `Rest` has one parameter: `std::forward<Rest_0>(rest_0)` is added, resulting in a call like `makeString(std::forward<Second>(second), std::forward<Rest_0>(rest_0));`.
+* if `Rest` has N parameters, each parameter is individually expanded using the enclosing expression: `std::forward<Rest_0>(rest_0), std::forward<Rest_1>(rest_1), ..., std::forward<Rest_N>(rest_N)`. 
+
+In summary, amount of parameters to `makeString` call on line #8 depends on the size of the parameter pack. The whole `std::forward<Rest_#>(rest_#)` expression is "copy-pasted" for each added parameter.  It's important to note that this behavior applies to any kind of packed expression, not just `std::forward`, so `f(g(pack)...)` would be expanded as `f(g(pack_0), g(pack_1), ..., g(pack_N))` accordingly.
+
+Given that, compile, run, enjoy!
+
+{{< highlight cpp>}}
+a: A; b: B{1}; pi: 3.141593
+xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
+Hello, world!!1
+two ; non-copyables
+C{"a container with its own to_string()"}
+a variadic with a double: 3.140000
+{{< /highlight >}}
+
+### Constrained version
+
+However, we can improve further. Instead of using the `Second&& second` parameter to avoid overloading conflicts, we can leverage constraints by requiring `sizeof...(Rest) > 0`:
+
+{{< highlight cpp "hl_line=2">}}
+template <typename First, typename... Rest>
+    requires (sizeof...(Rest) > 0)
+std::string makeString(First&& first, Rest&&... rest)
+{
+    return makeString(std::forward<First>(first)) 
+         + makeString(std::forward<Rest>(rest)...); 
+}
+{{< /highlight >}}
+
+Less code is less of a mental load on the reading developer, so it's a bit better. Can it be even better? 
+
+### Fold expressions
+
+Well, since C++ 17 we have [fold expressions](https://en.cppreference.com/w/cpp/language/fold). Having a parameter pack `pack` and an unary or binary operation 'x' we can expand `(pack x ...)` to `(pack_0 x (pack_1 x pack_2))` and so on. There are several options including a left-associative fold `(... pack x)` with dots on the left, a right-associative with dots on the right, an option for unary or binary operations, an `init` variable for an empty pack, and so on. 
+
+To keep this article size reasonable, I dare to forward the reader to the Fluent C++ blog for in-depth details: [part 1 - basics](https://www.fluentcpp.com/2021/03/12/cpp-fold-expressions/) and [part 2 - advanced usage](https://www.fluentcpp.com/2021/03/19/what-c-fold-expressions-can-bring-to-your-code/). 
+
+As we're dealing with strings, I expect the left-associative fold over `operator+=` to be more performant than using `operator+` because the latter will produce temporaries for holding intermediate results in case of multiple strings involved: `return ((a + b) + c) + d` result in 3 temporaries besides `a, b, c`, while `return ((a += b) += c) += d;` avoids them.
+
+{{< highlight cpp>}}
+template <typename... Pack>
+    requires (sizeof...(Pack) > 1)
+std::string makeString(Pack&&... pack)
+{
+    return (... += makeString(std::forward<Pack>(pack)));
+}
+{{< /highlight >}}
+
+Finally, I'd call it a day and summarize:
+ * A template function can (and probably should) be constarined to let the compiler fail early and provide a concise error context in case of misuse. Even if it has no overloads yet.
+ * SFINAE is a reasonable fallback when concepts are unavailable.
+ * Use static_assert and intentional compilation failures to get an insight on template expansion in case of misunderstanding.
+ * Perfect forwarding is our friend: it may better performance and relax 'copyable' requirement on the arguments.
+    * ... but not for trivial types. Some times are cheaper to pass by-copy than by-reference. 
+ * Variadic templates are useful way to process multiple arguments in a row. Fold expression might be even better.
+
+# The code I argee with
+
+Let's sync up on the result of this journey:
+{{< highlight cpp>}}
+// makeString.hpp
+#pragma once
+#include <string>
+#include <type_traits>
+#include <concepts>
+
+template <typename T>
+concept IsContainer = requires (T&& container) { std::begin(container); };
+
+// IsString is more constrained than IsContainer, so it will have a priority wherever possible
+template <typename T>
+concept IsString = IsContainer<T> && std::constructible_from<std::string, T>;
+
+template <typename T>
+concept HasStdConvestion = requires (T number) { std::to_string(number); };
+
+template <typename T>
+concept HasToString = requires (T&& object) 
+{ 
+    {object.to_string()} -> std::convertible_to<std::string>; 
+};
+
+
+template <HasStdConvestion Numeric>
+std::string makeString(Numeric number)
+{
+    return std::to_string(number);
+}
+
+template <HasToString Object>
+std::string makeString(Object&& object) 
+{
+    return std::forward<Object>(object).to_string();
+}
+
+template <IsString String>
+std::string makeString(String&& s) 
+{
+    return std::string(std::forward<String>(s));
+}
+
+template <IsContainer Iterable>
+std::string makeString(Iterable&& iterable) 
+{
+    std::string result;
+    for (auto&& i : iterable)
+    {
+        if (!result.empty())
+            result += ';';
+
+        // a constexpr if, so the compiler can omit unused branch and
+        // allow non-copyable types usage
+        if constexpr (std::is_rvalue_reference_v<decltype(iterable)>)
+            result += makeString(std::move(i));
+        else 
+            result += makeString(i);
+    }
+    return result;
+}
+
+template <typename... Pack>
+    requires (sizeof...(Pack) > 1)
+std::string makeString(Pack&&... pack)
+{
+    return (... += makeString(std::forward<Pack>(pack)));
+}
+{{< /highlight >}}
+{{< highlight cpp>}}
+// main.cpp
+#include <iostream>
+#include <vector>
+#include <set>
+#include "makeString.hpp"
+
+struct A
+{
+    std::string to_string() const { return "A"; }
+};
+
+struct B
+{
+    int m_i = 0;
+    std::string to_string() const { return "B{" + std::to_string(m_i) + "}"; }
+};
+
+struct NonCopyable
+{
+    std::string m_s;
+    NonCopyable(const char* s) : m_s(s)  {}
+    NonCopyable(NonCopyable&&) = default;
+    NonCopyable(const NonCopyable&) = delete;
+
+    std::string   to_string() const &  { return m_s; }
+    std::string&& to_string() &&       { return std::move(m_s); }
+};
+
+struct C
+{
+    std::string m_string;
+  
+    auto begin() const { return std::begin(m_string); }
+    auto begin()       { return std::begin(m_string); }
+    auto end() const   { return std::end(m_string); }
+    auto end()         { return std::end(m_string); }
+
+    std::string to_string() const { return "C{\"" + m_string + "\"}"; }
+};
+
+template <typename Container>
+    requires IsContainer<Container> && HasToString<Container>
+std::string makeString(Container&& c)
+{
+    return std::forward<Container>(c).to_string();
+}
+
+int main()
+{
+    A a;
+    B b = {1};
+
+    const std::vector<int> xs = {1, 2, 3};
+    const std::set<float> ys = {4, 5, 6};
+    const double zs[] = {7, 8, 9};
+
+    std::cout << "a: " << makeString(a) << "; b: " << makeString(b) 
+              << "; pi: " << makeString(3.1415926) << std::endl
+              << "xs: " << makeString(xs) << "; ys: " << makeString(ys) 
+              << "; zs: " << makeString(zs)
+              << std::endl;
+
+    std::cout << makeString("Hello, ") 
+              << makeString(std::string_view("world")) 
+              << makeString(std::string("!!1")) 
+              << std::endl;
+
+    auto makeVector = []()
+    { 
+        std::vector<NonCopyable> v;
+        v.emplace_back("two ");
+        v.emplace_back(" non-copyables");
+        return v; 
+    };
+
+    std::cout << makeString(makeVector())
+              << std::endl
+              << makeString( C { "a container with its own to_string()" } )
+              << std::endl;
+
+    std::cout << makeString("a ", std::string_view("variadic "), std::string("with a double: "), 3.14)
+              << std::endl;
+}
+{{< /highlight >}}
+And the output is:
+{{< highlight cpp>}}
+a: A; b: B{1}; pi: 3.141593
+xs: 1;2;3; ys: 4.000000;5.000000;6.000000; zs: 7.000000;8.000000;9.000000
+Hello, world!!1
+two ; non-copyables
+C{"a container with its own to_string()"}
+a variadic with a double: 3.140000
+{{< /highlight >}}
+
+# References
+A section also known as "I saw an interesting link somewhere in a text wall above":
+* [CMake (Wikipedia)](https://en.wikipedia.org/wiki/CMake)
+* [cppreference: Template specialization](https://en.cppreference.com/w/cpp/language/template_specialization)
+* [Cpp Core Guidelines: pass cheaply-copied types by value](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#f16-for-in-parameters-pass-cheaply-copied-types-by-value-and-others-by-reference-to-const)
+* [Arthur O’Dwyer's blog - pass string_view by value](https://quuxplusone.github.io/blog/2021/11/09/pass-string-view-by-value/)
+* [cppreference: Function template](https://en.cppreference.com/w/cpp/language/function_template)
+* [Overload resolution of function template calls](https://learn.microsoft.com/en-us/cpp/cpp/overload-resolution-of-function-template-calls)
+* [cppreference: Substitution Failure Is Not An Error](https://en.cppreference.com/w/cpp/language/sfinae)
+* [cppreference: Integer Promotions](https://en.cppreference.com/w/c/language/conversion)
+* [cppreference: Type Traits](https://en.cppreference.com/w/cpp/header/type_traits)
+* [cppreference: Metaprogramming library](https://en.cppreference.com/w/cpp/meta)
+* [isocpp blog on _universal (or forwarding) references_](https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers)
+* [cppreference: member functions](https://en.cppreference.com/w/cpp/language/member_functions)
+* [cppreference: copy elision](https://en.cppreference.com/w/cpp/language/copy_elision)
+* [me: Practical usage of ref-qualified member function overloading](../ref-qualifiers)
+* [cppreference: Constraints and concepts](https://en.cppreference.com/w/cpp/language/constraints)
+* [cppreference: requires clause](https://en.cppreference.com/w/cpp/language/constraints#Requires_clauses)
+* [Andrzej's C++ blog - ordering by constraints](https://akrzemi1.wordpress.com/2020/05/07/ordering-by-constraints/)
+* [Andrzej's C++ blog - conjunctions, disjunctions (Requires-clause)](https://akrzemi1.wordpress.com/2020/03/26/requires-clause/)
+* [`fmt` on Github, in case your standard library has no `std::format`](https://github.com/fmtlib/fmt)
+* [cppreference: parameter pack](https://en.cppreference.com/w/cpp/language/parameter_pack)
+* [cppreference: fold expressions](https://en.cppreference.com/w/cpp/language/fold)
+* [Fluent C++: C++ Fold Expressions 101](https://www.fluentcpp.com/2021/03/12/cpp-fold-expressions/)
+* [Fluent C++: What C++ Fold Expressions Can Bring to Your Code](https://www.fluentcpp.com/2021/03/19/what-c-fold-expressions-can-bring-to-your-code/)

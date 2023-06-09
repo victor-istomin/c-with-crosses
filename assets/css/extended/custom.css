@@ -35,7 +35,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, segoe ui, Roboto, Oxygen, Ubuntu, Cantarell, open sans, helvetica neue, sans-serif;
 }
 
-table 
+table:not(.lntable)
 {
   background-color: var(--code-bg);
 }
