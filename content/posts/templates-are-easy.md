@@ -37,7 +37,7 @@ Regarding extensibility, I'd like `makeString` to convert an object to string by
 We need an empty project to start with. It's at least 2023 outside, so I use [CMake](https://en.wikipedia.org/wiki/CMake). It’s okay to create a console application project using your favorite IDE instead, but in case you ever plan to write a cross-platform code during the long and happy C++ career path, CMake is definitely worth trying.
 
 {{< highlight cmake >}}
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.12)
 project(makeString VERSION 0.1.0)
 add_executable(makeString main.cpp)
 
