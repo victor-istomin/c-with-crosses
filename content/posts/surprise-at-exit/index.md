@@ -327,6 +327,10 @@ There is an [issue in the VS feedback tracker](https://developercommunity.visual
 
 Have a nice day!
 
+## Reddit discussion
+
+[Is here.](https://www.reddit.com/r/cpp/comments/14w29n0/win32_ucrt_surprise_at_exit_static_variables/)
+
 ## I saw an interesting link in the text above...
 
 There is a list of links from this article:
