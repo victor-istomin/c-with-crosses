@@ -24,20 +24,27 @@ struct Something
     ~Something()            { g_sideEffect++; }
 };
 
-std::thread g_workerThread;
-void workerThreadFunction()
+class Module
 {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+	std::thread m_workerThread;
+	static void workerThreadFunction()
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    static Something s;
-}
+		static Something s;
+	}
 
-struct Module
-{
+public:
+    
+    Module()
+    {
+		m_workerThread = std::thread(&Module::workerThreadFunction);
+    }
+
     ~Module()
     {
-        if (g_workerThread.joinable())
-            g_workerThread.join();
+        if (m_workerThread.joinable())
+            m_workerThread.join();
     }
 };
 
@@ -45,7 +52,6 @@ Module g_service;
 
 int main()
 {
-    g_workerThread = std::thread(workerThreadFunction);
     return 0;
 }
 {{< /highlight >}}
@@ -326,6 +332,10 @@ In my case, I had to join the worker thread before exiting from the `main()` to 
 There is an [issue in the VS feedback tracker](https://developercommunity.visualstudio.com/t/atexit-deadlock-with-thread-safe-static-/1654756) reported in 2022, but it doesn't seem to get enough votes to address it yet.
 
 Have a nice day!
+
+## Updates
+
+* Refactored the initial example to reflect the real-life scenario: the `Module` owns the `m_workerThread`, so it's natural to join() it during destruction;
 
 ## Reddit discussion
 
