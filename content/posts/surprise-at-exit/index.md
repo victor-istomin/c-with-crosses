@@ -352,3 +352,4 @@ There is a list of links from this article:
  * [Sysinternals - Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/)
  * [stdlib/exit.с: __run_exit_handlers() - in glibc](https://github.com/bminor/glibc/blob/4290aed05135ae4c0272006442d147f2155e70d7/stdlib/exit.c#L98)
  * issue in the VS feedback tracker: [atexit deadlock with thread-safe static local initialization](https://developercommunity.visualstudio.com/t/atexit-deadlock-with-thread-safe-static-/1654756)
+ * [Parallel Patterns Library](https://learn.microsoft.com/en-us/cpp/parallel/concrt/parallel-patterns-library-ppl?view=msvc-170)
