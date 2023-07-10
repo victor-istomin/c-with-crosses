@@ -50,7 +50,7 @@ int main()
 }
 {{< /highlight >}}
 
-<details><summary>A hint:</summary>
+<details><summary>A hint under the spoiler.</summary>
 If compiled with glibc/stdlib++, it typically takes around 1 second. However, on Windows with MSVC, as of today, it depends on the developer's patience and power supply due to a deadlock.<br><br></details>
 
 Despite appearing artificial, such a use case occurred on a typical MFC application that joins an HTTP listener thread upon exit in the destructor of a module with static storage duration. Usually, it works, but a deadlock occurs if the last-moment HTTP request is received. 
