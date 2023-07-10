@@ -10,7 +10,7 @@ draft: false
 # How I stepped into an issue
 
 > Well, we all know that Singletons are hard to get right, but a small static variable can't hurt all that much. It certainly works for me!
-<cite> — a library developer by the end of the day</cite>
+<cite> — a developer of a popular REST SDK library by the end of the day</cite>
 
 A little quiz: how long does it take for the following code to terminate?
 
