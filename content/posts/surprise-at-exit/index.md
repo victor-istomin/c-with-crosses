@@ -71,7 +71,7 @@ Let’s dive into the example in the Visual Studio debugger. Hit the pause butto
 
 At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more contrived than the given example), so let’s find and examine it.
 
-While the `std::thread` conveniently provides us a thread ID within its object internals, the RAW Win32 threads API won’t, so we might see the `WaitForSingleObjectEx` waiting on some handle with no idea about the thread ID.
+The implementation of `std::thread` conveniently provides us a thread ID within its object internals, but the one using RAW `_beginthreadex` approach or something like the [Parallel Patterns Library](https://learn.microsoft.com/en-us/cpp/parallel/concrt/parallel-patterns-library-ppl?view=msvc-170) may end up seeing the RAW see the `WaitForSingleObjectEx` with a single handle value and no idea about the thread ID.
 
 ## Searching for the deadlock counterpart thread
 
@@ -86,7 +86,9 @@ There are few options that came to my mind:
 Let's imagine that there is no <code>std::thread&#58;:_Id</code> member variable. Only a RAW Win32 thread handle, `0x0000009C`, for example. 
 ![handle: `0x0000009C`](images/handle.png "handle: `0x0000009C`")
 
-A handle is a process-local descriptor of the opened resource, similar to the index in the opened resources table. Although the handle value hides any information about the resource it points to, we can query details using undocumented API or leverage the [Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/) from the Sysinternals Utilities by Mark Russinovich that serves the same purpose.
+A handle is a process-local descriptor of the opened resource, similar to the index in the opened resources table. Although the handle value hides any information about the resource it points to, we can query details using undocumented API or `GetThreadId` function for the handle to the thread. Anyway, we have to convert it in runtime rather than in the debugger.
+
+The simpler solution is to leverage the [Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/) from the Sysinternals Utilities by Mark Russinovich which serves the same purpose.
 
 The Handle utility will enumerate all running processes in the system and dump each opened handle alongside details of what this handle points to. Then, we could match our handle value with dumped information to find a thread ID and switch to it in the debugger. 
 
@@ -335,7 +337,8 @@ Have a nice day!
 
 ## Updates
 
-* Refactored the initial example to reflect the real-life scenario: the `Module` owns the `m_workerThread`, so it's natural to join() it during destruction;
+* Refactored the initial example to reflect the real-life scenario: the `Module` owns the `m_workerThread`, so it's natural to join() it during destruction.
+* Added clarifications on why the developer may need to convert the handle to ID.
 
 ## Reddit discussion
 
