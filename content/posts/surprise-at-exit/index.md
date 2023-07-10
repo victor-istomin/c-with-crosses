@@ -26,19 +26,19 @@ struct Something
 
 class Module
 {
-	std::thread m_workerThread;
-	static void workerThreadFunction()
-	{
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::thread m_workerThread;
+    static void workerThreadFunction()
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
-		static Something s;
-	}
+        static Something s;
+    }
 
 public:
     
     Module()
     {
-		m_workerThread = std::thread(&Module::workerThreadFunction);
+        m_workerThread = std::thread(&Module::workerThreadFunction);
     }
 
     ~Module()
