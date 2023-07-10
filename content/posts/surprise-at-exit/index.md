@@ -1,15 +1,15 @@
 ---
 title: "Win32 UCRT surprise at exit: static variables destruction"
 date:  2023-07-09T21:42:55Z
-summary: "Well, we all know that Singletons are hard to get right, but a small static variable won't hurt. And the code works for me. -- This may lead to several hours of interesting multi-thread code debugging"
+summary: "Well, we all know that Singletons are hard to get right, but a small static variable can't hurt (all that much). It certainly works for me! -- This may lead to several hours of interesting multi-thread code debugging"
 tags: ["cpp", "win32", "multi-threading"]
 author: "Me"
 draft: false
 ---
 
-# How I went into an issue
+# How I stepped into an issue
 
-> Well, we all know that Singletons are hard to get right, but a small static variable won’t hurt. It works for me.
+> Well, we all know that Singletons are hard to get right, but a small static variable can't hurt all that much. It certainly works for me!
 <cite> — a library developer by the end of the day</cite>
 
 A little quiz: how long does it take for the following code to terminate?
@@ -63,7 +63,7 @@ Let’s dive into the example in the Visual Studio debugger. Hit the pause butto
 
 ![main thread call stack](images/main-thread.png "main thread call stack")
 
-At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more complex than a given example), so let’s find and examine it.
+At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more contrived than the given example), so let’s find and examine it.
 
 While the `std::thread` conveniently provides us a thread ID within its object internals, the RAW Win32 threads API won’t, so we might see the `WaitForSingleObjectEx` waiting on some handle with no idea about the thread ID.
 
@@ -71,28 +71,28 @@ While the `std::thread` conveniently provides us a thread ID within its object i
 
 A hardworking developer could examine all the application threads call-stacks one by one, but as our serious application has a lot of threads, including some auxiliary ones, we'll try to speed up the investigation process.
 
-There are few options came to my mind:
+There are few options that came to my mind:
 * get the thread ID from the handle;
-* stare at the Parallel Stacks in the VS debugger until enlightenment occurs.
+* stare at the Parallel Stacks in the VS debugger until enlightened.
 
-## Getting a thread ID from the handle
+## Getting a thread ID from its handle
 
 Let's imagine that there is no <code>std::thread&#58;:_Id</code> member variable. Only a RAW Win32 thread handle, `0x0000009C`, for example. 
 ![handle: `0x0000009C`](images/handle.png "handle: `0x0000009C`")
 
-A handle is a descriptor of the opened resource, just like the `fopen()` return value. Technically, it’s an index in the resources table. It would be nice if we could glance at it with a little effort, and actually, we can do this using the [Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/) from the Sysinternals Utilities by Mark Russinovich. 
+A handle is a process-local descriptor of the opened resource, similar to the index in the opened resources table. Although the handle value hides any information about the resource it points to, we can query details using undocumented API or leverage the [Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/) from the Sysinternals Utilities by Mark Russinovich that serves the same purpose.
 
-By the way, I recommend eventually examining the whole suite of Sysinternals Utilities, as there are a lot of utilities to help the user find out what is going on in the system.
+The Handle utility will enumerate all running processes in the system and dump each opened handle alongside details of what this handle points to. Then, we could match our handle value with dumped information to find a thread ID and switch to it in the debugger. 
 
 Looking at the manual, let's craft a command line: `-a` for _all_, `-v` for _CSV_:
 {{< highlight bat>}}c:\tools\handles>handle -a -v > handles.csv
 {{< /highlight >}}
 
-Hit <kbd>ENTER</kbd>, wait until your patience runs out, realizing that Handle.exe is trying to inject its code into a frozen process to gather details. To let the tool execute the code inside the debugged process, hit 'Continue' in the debugger. Then a CSV with all the opened handles appears. Quite a lot, but we have a grep or a table processor to search for our handle. 
+Hit <kbd>ENTER</kbd>, wait until your patience runs out, realizing that Handle.exe is trying to inject its code into a frozen process to gather details. To let the tool execute the code inside the debugged process, hit 'Continue' in the debugger. Then a CSV with all the opened handles appears. Quite a lot, but we have a grep or a table processor to search for our handle by value. 
 
 ![ID: `10596`](images/handle-csv.png "ID: `10596`")
 
-Having a process ID, jump to this thread and examine whether there is a bug in our worker thread. We’ll start by investigating its call stack after describing the alternate solution.
+Now we know that the main thread is waiting for the termination of the thread with ID 10596, so we can select it in the VS thread dropdown among many others and investigate its call stack to find out what it waits for. We'll do this after describing the alternate solution.
 
 ## VS debugger: Parallel Stacks
 
@@ -108,14 +108,11 @@ By carefully examining all of the application's threads, we can identify two thr
 
 We might be close to the solution.
 
-# The origin of `std::exit` and `std::atexit` calls 
+# The origin of the `std::exit` and `std::atexit` calls 
 
-The reason why `std::exit` is called is that it handles a normal C++ program termination, either when the `main()` completed its execution or upon the explicit call to `std::exit`[^automatic]. It performs the necessary cleanup, including the cleanup of static variables. 
+The compiler generates a `std::exit` call to perform a normal C++ program termination when the `main()` has completed execution: its responsibility is the necessary cleanup, including the destruction of variables with static storage duration. 
 
-Regarding `std::atexit`, its purpose here is to maintain a correct <abbr title="Last In - First Out">LIFO</abbr> destruction order of the static variables, because the order may be runtime-defined and can't be hard-coded:
-
-[^automatic]: although it's hard to call an explicit call to `std::exit` a "normal program termination" in C++, because it does not unwind the stack, thus not destroying objects with automatic storage duration. 
-
+Regarding `std::atexit`, its purpose here is registering static object destructors invocation in the <abbr title="Last In - First Out">LIFO</abbr> order because the order may be runtime-defined and unknown at the compile-time: 
 {{< highlight cpp>}}
 int foo()
 {
@@ -130,7 +127,7 @@ int bar()
 int main()
 {
     // foo::a and bar::b initialization order is determined by run-time, happy QA-ing!
-    if (0 != (time(nullptr) % 1))
+    if (0 != (time(nullptr) % 2))
         foo();
 
     bar();
@@ -138,7 +135,7 @@ int main()
 }
 {{< /highlight >}}
 
-Thus the destructor of an object with a static lifetime is registered by its constructor. I didn't find the statement that the compiler has to register it using `std::atexit`, but this assumption looks reasonable given the `std::exit` documentation:
+Thus the constructor of an object with a static lifetime registers its destructor at runtime. I didn't find the requirement for the compiler to use `std::atexit` for it, but this assumption looks reasonable given the `std::exit` documentation:
 
 > Causes normal program termination to occur.                                                                            <br>
 > Several cleanup steps are performed: <br>
@@ -151,17 +148,17 @@ Thus the destructor of an object with a static lifetime is registered by its con
 > ...
 <cite> -- [cppreference on std::exit](https://en.cppreference.com/w/cpp/utility/program/exit)</cite>
 
-In essence, a static variable with a non-trivial destructor will call `std::atexit` or its internal counterpart to register the destructor. Later, `std::exit` will call registered destructors alongside other deinitialization callbacks using a LIFO order. 
+In essence, a constructor of the static variable will call `std::atexit` or its internal counterpart to register the destructor, if the destructor is non-trivial. Later, `std::exit` will call registered destructors alongside other deinitialization callbacks using a <abbr title="Last In - First Out">LIFO</abbr> order.
 
 ## A glance at various `std::exit` implementations
 
 Since the `std::atexit` [is thread-safe](https://en.cppreference.com/w/cpp/utility/program/atexit), it's synchronized with `std::exit` to avoid race conditions. However, the synchronization may incur a thread lock, which may introduce a possibility of a deadlock.
 
-Now, let's explore different implementations to gain a better understanding of the underlying mechanisms and potential issues involved.
+Now, let’s explore different implementations to get an insight into the underlying mechanisms and potential issues involved.
 
 ### Win32: Universal CRT
 
-Since Windows 10, the C Runtime is a separate system component. Its source code is a part of Windows SDK and is located in `C:\Program Files (x86)\Windows Kits\10\Source\[SDK-version]\ucrt\startup\onexit.cpp`. Let's dive into the `_execute_onexit_table` and `_register_onexit_function` which, as we already know from callstacks, are responsible for `std::exit` and `std::atexit` callbacks processing:
+Starting from the Windows 10, the C Runtime is a separate system component. Its source code is a part of Windows SDK, so let's navigate to `C:\Program Files (x86)\Windows Kits\10\Source\[SDK-version]\ucrt\startup\onexit.cpp` and dive into the `_execute_onexit_table` and `_register_onexit_function` functions. As we already know from callstacks, they are responsible for `std::exit` and `std::atexit` callbacks processing:
 
 {{< highlight cpp "hl_lines=8 33 55">}}
 // This function executes a table of _onexit()/atexit() functions.  The
@@ -224,11 +221,13 @@ extern "C" int __cdecl _register_onexit_function(_onexit_table_t* const table, _
     }
 }
 {{< /highlight >}}
-Both functions are technically lambdas guarded by the same Critical Section and a 'try..except' SEH guard. 
+Both functions are technically lambdas guarded by the same Critical Section and a 'try..except' SEH guard. A summary of `_execute_onexit_table`:
+1. Iterate over a linked list of handlers searching for the topmost non-null callback `function()` using the <abbr title="Last In - First Out">LIFO</abbr> rule.
+2. Mark the topmost non-null callback as executed by setting it to nullptr and calling it.
+3. If the callback added a new hander during the execution, reset the iteration from the top of the list.
+4. Loop until there are pending callbacks in the list.
 
-In the case of `_execute_onexit_table`, it iterates over a linked list of handlers, decodes the next non-null callback `function()` using the LIFO rule, marks it as executed by setting it to nullptr, executes it, and resets the iteration from the last added callback point if a new hander was added during the execution of the callback.  
-
-This kind of recursion works fine because Critical Section functions like a _recursive_ mutex, thus `_register_onexit_function` will not be blocked when called from an `atexit` handler of the same thread. 
+A kind of recursion on step 3 works fine because Critical Section works like a _recursive_ mutex, thus `std::atexit -> _register_onexit_function` will not be blocked when called from the callback handler of the same thread. 
 
 However, a deadlock will occur if `function()` is waining on another thread while that thread tries to lock the same Critical Section to add another `atexit` handler. 
 
@@ -304,7 +303,7 @@ __run_exit_handlers (int status, struct exit_function_list **listp,
   // ...
 }
 {{< /highlight >}}
-It's a bit more intricate than Window UCRT, but in general, it's the same, except for one thing that avoid the deadlock:
+It's a bit more intricate than Windows UCRT, but in general, it's the same, except for one thing that avoids the deadlock:
 {{< highlight cpp>}}
     /* Unlock the list while we call a foreign function.  */
     __libc_lock_unlock (__exit_funcs_lock);
@@ -317,13 +316,22 @@ The GNU Libc implementation unlocks the mutex for a callback, avoiding the descr
 
 # Conclusions
 
-* `static` object creation and destruction may incur a mutex lock.
-* `static` objects will implicitly add their destructors to `std::atexit` callbacks list, maintaining thread-safety with a mutex.
-* `std::exit` locks the callbacks list and may not unlock it (although glibc does) during the callback execution. 
-* the deadlock may occur if cleanup callback (for example, a static object destructor) waits for another thread, while another thread wants to add another cleanup callback.
+* The creation or destruction of a `static` object may incur a mutex lock.
+* Objects with a static storage duration will implicitly add their destructors to the `std::atexit` callbacks list, maintaining thread-safety with a mutex.
+* The `std::exit` needs to lock the callbacks list. Not all the CRT/libc implementation unlock it during the callback execution. 
+* The deadlock may occur if a cleanup callback (for instance, a static object destructor) waits for another thread while another thread wants to add a new cleanup callback.
 
-In my case, the issue was fixed by joining the worker thread before exiting from the `main()` but I think it's an interesting and non-trivial multithreading pitfall. 
+In my case, I had to join the worker thread before exiting from the `main()` to avoid the deadlock. However, I think it's an interesting and non-trivial multithreading pitfall worth knowing about. 
 
-There is an [issue reported in a VS feedback tracker](https://developercommunity.visualstudio.com/t/atexit-deadlock-with-thread-safe-static-/1654756) in 2022, but it doesn't seem to get enough votes to address it yet.
+There is an [issue in the VS feedback tracker](https://developercommunity.visualstudio.com/t/atexit-deadlock-with-thread-safe-static-/1654756) reported in 2022, but it doesn't seem to get enough votes to address it yet.
 
 Have a nice day!
+
+## I saw an interesting link in the text above...
+
+There is a list of links from this article:
+ * [cppreference - std::exit](https://en.cppreference.com/w/cpp/utility/program/exit)
+ * [cppreference - std::atexit](https://en.cppreference.com/w/cpp/utility/program/atexit)
+ * [Sysinternals - Handle tool](https://learn.microsoft.com/en-us/sysinternals/downloads/handle/)
+ * [stdlib/exit.с: __run_exit_handlers() - in glibc](https://github.com/bminor/glibc/blob/4290aed05135ae4c0272006442d147f2155e70d7/stdlib/exit.c#L98)
+ * issue in the VS feedback tracker: [atexit deadlock with thread-safe static local initialization](https://developercommunity.visualstudio.com/t/atexit-deadlock-with-thread-safe-static-/1654756)
