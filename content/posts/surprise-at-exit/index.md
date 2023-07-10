@@ -59,7 +59,11 @@ Long story short: a platform-dependent code gathers additional information when 
 
 # A bit of debugging
 
-Let’s dive into the example in the Visual Studio debugger. Hit the pause button and load the symbols as necessary: we observe the main thread joining the worker during the destruction of the static module. At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more complex than a given example), so let’s find and examine it.
+Let’s dive into the example in the Visual Studio debugger. Hit the pause button and load the symbols as necessary: we observe the main thread joining the worker during the destruction of the static module.
+
+![main thread call stack](images/main-thread.png "main thread call stack")
+
+At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more complex than a given example), so let’s find and examine it.
 
 While the `std::thread` conveniently provides us a thread ID within its object internals, the RAW Win32 threads API won’t, so we might see the `WaitForSingleObjectEx` waiting on some handle with no idea about the thread ID.
 
@@ -98,7 +102,11 @@ In this case, a Parallel Stack feature of VS debugger may group call stacks of a
 
 ![Debug > Windows > Parallel Stacks](images/parallel-stacks.png "Debug > Windows > Parallel Stacks")
 
-By carefully examining all of the application's threads, we can identify two threads waiting in suspicious locations: the main one has acquired a mutex through the `__acrt_lock_and_call` and is currently waiting for another thread termination inside `std::exit -> ... -> _execute_onexit_table`. Additionally, thread 10596 is waiting to acquire a critical section lock inside `std::atexit -> ... -> _register_onexit_function -> __acrt_lock_and_call`. We might be close to the solution.
+By carefully examining all of the application's threads, we can identify two threads waiting in suspicious locations: 
+* the main one has acquired a mutex through the `__acrt_lock_and_call` and is currently waiting for another thread termination inside `std::exit -> ... -> _execute_onexit_table -> ... -> ~Module() -> join()`;
+* thread 10596 is waiting to acquire a critical section lock inside `std::atexit -> ... -> _register_onexit_function -> __acrt_lock_and_call`. 
+
+We might be close to the solution.
 
 # The origin of `std::exit` and `std::atexit` calls 
 
