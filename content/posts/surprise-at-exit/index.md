@@ -36,9 +36,9 @@ class Module
 
 public:
     
-    Module()
+    Module() 
+        : m_workerThread(&Module::workerThreadFunction)
     {
-        m_workerThread = std::thread(&Module::workerThreadFunction);
     }
 
     ~Module()
@@ -77,7 +77,7 @@ The implementation of `std::thread` conveniently provides us a thread ID within 
 
 A hardworking developer could examine all the application threads call-stacks one by one, but as our serious application has a lot of threads, including some auxiliary ones, we'll try to speed up the investigation process.
 
-There are few options that came to my mind:
+There are a few options that came to my mind:
 * get the thread ID from the handle;
 * stare at the Parallel Stacks in the VS debugger until enlightened.
 
@@ -166,7 +166,7 @@ Now, let’s explore different implementations to get an insight into the underl
 
 ### Win32: Universal CRT
 
-Starting from the Windows 10, the C Runtime is a separate system component. Its source code is a part of Windows SDK, so let's navigate to `C:\Program Files (x86)\Windows Kits\10\Source\[SDK-version]\ucrt\startup\onexit.cpp` and dive into the `_execute_onexit_table` and `_register_onexit_function` functions. As we already know from callstacks, they are responsible for `std::exit` and `std::atexit` callbacks processing:
+Starting from Windows 10, the C Runtime is a separate system component. Its source code is a part of Windows SDK, so let's navigate to `C:\Program Files (x86)\Windows Kits\10\Source\[SDK-version]\ucrt\startup\onexit.cpp` and dive into the `_execute_onexit_table` and `_register_onexit_function` functions. As we already know from callstacks, they are responsible for `std::exit` and `std::atexit` callbacks processing:
 
 {{< highlight cpp "hl_lines=8 33 55">}}
 // This function executes a table of _onexit()/atexit() functions.  The
@@ -326,7 +326,7 @@ The GNU Libc implementation unlocks the mutex for a callback, avoiding the descr
 
 * The creation or destruction of a `static` object may incur a mutex lock.
 * Objects with a static storage duration will implicitly add their destructors to the `std::atexit` callbacks list, maintaining thread-safety with a mutex.
-* The `std::exit` needs to lock the callbacks list. Not all the CRT/libc implementation unlock it during the callback execution. 
+* The `std::exit` needs to lock the callbacks list. Not all the CRT/libc implementations unlock it during the callback execution. 
 * The deadlock may occur if a cleanup callback (for instance, a static object destructor) waits for another thread while another thread wants to add a new cleanup callback.
 
 In my case, I had to join the worker thread before exiting from the `main()` to avoid the deadlock. However, I think it's an interesting and non-trivial multithreading pitfall worth knowing about. 
