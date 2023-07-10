@@ -71,7 +71,7 @@ Let’s dive into the example in the Visual Studio debugger. Hit the pause butto
 
 At first glance, it looks like a worker thread bug (you know, real-world thread functions are a bit more contrived than the given example), so let’s find and examine it.
 
-The implementation of `std::thread` conveniently provides us a thread ID within its object internals, but the one using RAW `_beginthreadex` approach or something like the [Parallel Patterns Library](https://learn.microsoft.com/en-us/cpp/parallel/concrt/parallel-patterns-library-ppl?view=msvc-170) may end up seeing the RAW see the `WaitForSingleObjectEx` with a single handle value and no idea about the thread ID.
+The implementation of `std::thread` conveniently provides us a thread ID within its object internals, but the one using RAW `_beginthreadex` approach or something like the [Parallel Patterns Library](https://learn.microsoft.com/en-us/cpp/parallel/concrt/parallel-patterns-library-ppl?view=msvc-170) may end up seeing the RAW `WaitForSingleObjectEx` with a single handle value and no idea about the thread ID.
 
 ## Searching for the deadlock counterpart thread
 
