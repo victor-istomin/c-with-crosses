@@ -1322,7 +1322,7 @@ Finally, I'd call it a day and summarize:
     * ... but not for trivial types. Some times are cheaper to pass by-copy than by-reference. 
  * Variadic templates are a convenient way to process multiple arguments in a row. Fold expression might be even better.
 
-# The code I argee with
+# The code I agree with
 
 Let's sync up on the result of this journey:
 {{< highlight cpp>}}
