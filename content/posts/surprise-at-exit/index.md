@@ -2,7 +2,7 @@
 title: "Win32 UCRT surprise at exit: static variables destruction may lead to a deadlock"
 date:  2023-07-09T21:42:55Z
 summary: "Well, we all know that Singletons are hard to get right, but a small static variable can't hurt (all that much). It certainly works for me! -- This may lead to several hours of interesting multi-thread code debugging"
-tags: ["cpp", "win32", "multi-threading"]
+tags: ["c++", "win32", "multi-threading"]
 author: "Me"
 draft: false
 ---
