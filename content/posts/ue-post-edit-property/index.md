@@ -199,6 +199,10 @@ Thus, the BP-created component will lose any changes the `MyComponent::PostEditC
 * Spawn the component using C++ by `CreateDefaultSubobject` to avoid the construction script re-run. Not the best idea, in my opinion, because I think the reusable component's method implementation should not depend on the means of construction. Eventually, misuse will occur.
 * * At least, I'd place `ensureMsgf(!IsPendingKill(this), ...)` with a clear message at the end of the overridden `PostEditChangeProperty` to alert the developer once a Blueprint-created version occurs. 
 
+## PostInitProperties alternative example
+
+My final solution looks like this:
+
 {{< highlight cpp>}}
 void UEmitterStackComponent::PostInitProperties()
 {
