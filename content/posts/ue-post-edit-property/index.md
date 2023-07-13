@@ -21,7 +21,6 @@ Image Credit: [DAVE LOWE DESIGN](https://davelowedesign.com/)
 _The Necromancer can make use of the Dead. You should not. At least, not in C++_
 <br>
 
-
 # The Problem
 
 Let's assume there is a Scene Component that represents a stack of laser emitters. It is a reusable component for laster gates, player detectors, and maybe some evil trap. 
@@ -217,3 +216,7 @@ void UEmitterStackComponent::PostInitProperties()
 }{{< /highlight >}}
 
 Hope, this helps someone and sheds some light on the pitfalls of `PostEditChangeProperty` overriding for component classes.
+
+# Reddit discussion
+
+[Is here.](https://www.reddit.com/r/unrealengine/comments/14yzisc/ue_5_pitfalls_of/)
