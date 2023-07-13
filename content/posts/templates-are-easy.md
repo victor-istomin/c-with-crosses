@@ -2,9 +2,7 @@
 title: "C++ templates: Trying to Make the Easy Way"
 date:  2023-04-30T00:59:12Z
 summary: "A gentle introduction into advanced template techniques on a practical example: a `makeString(...)` method to convert everything to a string"
-# weight: 1
-# aliases: ["/first"]
-tags: ["c++", "cpp", "templates", "sfinae", "concepts"]
+tags: ["c++", "templates", "sfinae", "concepts"]
 author: "Me"
 draft: false
 #description: "Desc Text. Trying **bold**, or even `code`"
