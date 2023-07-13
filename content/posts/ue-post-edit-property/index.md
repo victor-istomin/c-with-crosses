@@ -24,6 +24,13 @@ _The Necromancer can make use of the Dead. You should not. At least, not in C++_
 # The Problem
 
 Let's assume there is a Scene Component that represents a stack of laser emitters. It is a reusable component for laster gates, player detectors, and maybe some evil trap. 
+<video controls>
+    <source src="images/gates-3000.webm" type="video/webm">
+    <source src="images/gates-3000.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+</video>
+
+_-- This one_
 
 The implementation is divided into C++ and Blueprint parts: 
 * Base C++ class for the core logic: tick updates, game logic, etc.
@@ -36,6 +43,7 @@ Eventually, I wanted the component to reflect in-editor changes by updating its 
 The well-known way to do this is to override the `UActorComponent::PostEditChangeProperty` method. Having a decent C++ experience and several examples, this looks trivial, so I crafted the following code.
 
 Hopefully, myself-from-the-future visited my PC and added an `ensure()` and some hints to guard us agains the sleep-deprived night and several hours of debugging.
+
 
 {{< highlight cpp "linenos=table,hl_lines=5-6">}}
 #if WITH_EDITOR
