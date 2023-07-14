@@ -197,7 +197,7 @@ Thus, the BP-created component will lose any changes the `MyComponent::PostEditC
 * Treat the `Component::PostEditChangeProperty` like a read-only method that could only send some notification or trigger an async callback _on the owner actor_ to perform necessary updates on the next Editor tick for a new instance. 
 * Use another change callback. I refactored my code to work fine with the `PostInitProperties` callback.
 * Spawn the component using C++ by `CreateDefaultSubobject` to avoid the construction script re-run. Not the best idea, in my opinion, because I think the reusable component's method implementation should not depend on the means of construction. Eventually, misuse will occur.
-* * At least, I'd place `ensureMsgf(!IsPendingKill(this), ...)` with a clear message at the end of the overridden `PostEditChangeProperty` to alert the developer once a Blueprint-created version occurs. 
+  * At least, I'd place `ensureMsgf(!IsPendingKill(this), ...)` with a clear message at the end of the overridden `PostEditChangeProperty` to alert the developer once a Blueprint-created version occurs. 
 
 ## PostInitProperties alternative example
 
@@ -218,7 +218,8 @@ void UEmitterStackComponent::PostInitProperties()
     // AActorComponent::PostEditChangeProperty() does not help, because it 
     // re-creates BP component instance thus making a new component object.
 #if WITH_EDITOR
-    if (UWorld* world = GetWorld(); IsValid(world) && !world->IsGameWorld() && !IsTemplate())
+    if (UWorld* world = GetWorld(); 
+        IsValid(world) && !world->IsGameWorld() && !IsTemplate())
     {
         // in editor, it's fine to postpone the initialization for the next tick, 
         // until all children emitters will be initialized for sure
