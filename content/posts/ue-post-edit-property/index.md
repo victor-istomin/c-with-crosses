@@ -202,6 +202,32 @@ Let's summarize the findings.
 
 Thus, the BP-created component will lose any changes the `MyComponent::PostEditChangeProperty` made. Also, `UActorComponent::PostEditChangeProperty` may mark it as a pending kill.
 
+# Alternate initialization callbacks
+
+Since `UActorComponent::PostEditChangeProperty` is tricky to use correctly for a BP-spawned component, a developer may consider refactoring the code to use other initialization callbacks instead.
+
+Their execution order for the described case may help reasoning on which to use: 
+
+{{< highlight cpp "hl_lines=4 10">}}
+// 'source' means an old component that existed prior to the propertt change
+// 'newComponent' means a new instance that will replace the 'source' after 
+// BP construction scripts execution
+source->PostEditChangeProperty(); // may mark 'source' as pending kill
+ReRegister()->source->OnRegister(); 
+newComponent->constructor;
+newComponent->PostInitProperties();
+newComponent->OnComponentCreated();
+newComponent->OnRegister();
+ApplyToActor(cache)->newComponent->properties restored;
+newComponent->OnRegister(); // if `UActorComponent::bAllowReregistration` (by default)
+newComponent->PostApplyToComponent();
+{{< /highlight >}}
+
+There are two functions called after properties restoring:  
+ * UActorComponent::OnRegister - the pitfall is that it’s called three times with no clear indication of whether the properties are in an intermediate state. Thus 'OnRegister/OnUnregister' pair may be used to update the editor-only state, but the debugging may be intricate. 
+ * UActorComponent::PostApplyToComponent() is never called during a normal initialization, even in the Editor, so its only purpose seems to be the described case. For me, it looks rather like a workaround than a solution. 
+ * Other functions are called before the restoration of properties, thus the only use case for our case is to schedule an async update on the next frame. I think, it's an acceptable solution for the Editor functionality, but it's not ideal.  
+
 # My way of handling property change by the Editor
 
 * Treat the `Component::PostEditChangeProperty` like a read-only method that could only send some notification or trigger an async callback _on the owner actor_ to perform necessary updates on the next Editor tick for a new instance. 
@@ -246,3 +272,4 @@ Hope, this helps someone and sheds some light on the pitfalls of `PostEditChange
 
 # Updates
  * Replaced deprecated `ensure(!IsPendingKill())` with `ensure(IsValid())` - my fault translating thoughts into the code.
+ * Added 
