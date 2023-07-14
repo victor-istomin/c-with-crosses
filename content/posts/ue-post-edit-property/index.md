@@ -57,9 +57,9 @@ Hopefully, myself-from-the-future visited my PC and added an `ensure()` and some
 #if WITH_EDITOR
 void UEmitterStackComponent::PostEditChangeProperty(FPropertyChangedEvent& event)
 {
-    ensure(!IsPendingKill());                    // Fine
+    ensure(IsValid(this));                       // Fine
     Super::PostEditChangeProperty(event);        // What could go wrong?
-    ensure(!IsPendingKill());                    // Ouch!..
+    ensure(IsValid(this));                       // Ouch!..
     InitilizeEmitters();                         // I believed it will work... :(
 }
 #endif
@@ -80,7 +80,7 @@ void UEmitterStackComponent::PostEditChangeProperty(FPropertyChangedEvent& event
            TEXT("PostEditChangeProperty: EmitterStackComponent->Test: %d"),
            TestUproperty);
 
-    ensure(!IsPendingKill());             // should be alive
+    ensure(IsValid(this));             // should be alive
     InitilizeEmitters();                  // please work
     Super::PostEditChangeProperty(event);
 }
@@ -207,7 +207,7 @@ Thus, the BP-created component will lose any changes the `MyComponent::PostEditC
 * Treat the `Component::PostEditChangeProperty` like a read-only method that could only send some notification or trigger an async callback _on the owner actor_ to perform necessary updates on the next Editor tick for a new instance. 
 * Use another change callback. I refactored my code to work fine with the `PostInitProperties` callback.
 * Spawn the component using C++ by `CreateDefaultSubobject` to avoid the construction script re-run. Not the best idea, in my opinion, because I think the reusable component's method implementation should not depend on the means of construction. Eventually, misuse will occur.
-  * At least, I'd place `ensureMsgf(!IsPendingKill(this), ...)` with a clear message at the end of the overridden `PostEditChangeProperty` to alert the developer once a Blueprint-created version occurs. 
+  * At least, I'd place `ensureMsgf(IsValid(this), ...)` with a clear message at the end of the overridden `PostEditChangeProperty` to alert the developer once a Blueprint-created version occurs. 
 
 ## PostInitProperties alternative example
 
@@ -243,3 +243,6 @@ Hope, this helps someone and sheds some light on the pitfalls of `PostEditChange
 # Reddit discussion
 
 [Is here.](https://www.reddit.com/r/unrealengine/comments/14yzisc/ue_5_pitfalls_of/)
+
+# Updates
+ * Replaced deprecated `ensure(!IsPendingKill())` with `ensure(IsValid())` - my fault translating thoughts into the code.
