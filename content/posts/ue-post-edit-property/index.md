@@ -272,4 +272,4 @@ Hope, this helps someone and sheds some light on the pitfalls of `PostEditChange
 
 # Updates
  * Replaced deprecated `ensure(!IsPendingKill())` with `ensure(IsValid())` - my fault translating thoughts into the code.
- * Added 
+ * Added a chapter on [initialization callbacks order](#alternate-initialization-callbacks).
