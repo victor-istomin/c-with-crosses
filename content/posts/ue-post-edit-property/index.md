@@ -64,7 +64,7 @@ This code triggers `ensure()` failure on line #6. Also, `Super::PostEditChangePr
 Okay, since `UActorComponent::PostEditChangeProperty` re-create the component, let's make changes before `Super::PostEditChangeProperty(event);` 
 
 It will work, won't it?
-{{< highlight cpp "linenos=table">}}
+{{< highlight cpp >}}
 void UEmitterStackComponent::PostEditChangeProperty(FPropertyChangedEvent& event)
 {
     TestUproperty += 1;       // public: UPROPERTY() int TestProperty = 0;
@@ -174,7 +174,9 @@ bool UActorComponent::Modify( bool bAlwaysMarkDirty/*=true*/ )
 }
 {{< /highlight >}}
 
-Let's summarize and translate the findings into English. 
+Thus, the main problem is that the Editor snapshots our Actor before the editing starts, alters the edited property, and creates a new component using the snapshot. Other side-effect changes aren't "replicated" into it.
+
+Let's summarize the findings. 
 
 ## Conclusion: how does the Editor change a property of a blueprint-generated component
 
