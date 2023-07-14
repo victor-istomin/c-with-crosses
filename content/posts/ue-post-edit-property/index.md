@@ -47,7 +47,7 @@ The implementation is divided into C++ and Blueprint parts:
 
 As the top-level class is a Blueprint, it's added to an actor by the Editor, making it a Blueprint-spawned component. It is a crucial detail.
 
-Eventually, I wanted the component to reflect in-editor changes by updating its appearance. For instance, update the laser preview mesh when the Editor changes the InitialLength property. 
+Eventually, I wanted the component to reflect in-editor changes by updating its appearance. For instance, update the editor-only laser preview mesh when the Editor changes the default laser length property. 
 
 The well-known way to do this is to override the `UActorComponent::PostEditChangeProperty` method. Having a decent C++ experience and several examples, this looks trivial, so I crafted the following code.
 
@@ -80,7 +80,7 @@ void UEmitterStackComponent::PostEditChangeProperty(FPropertyChangedEvent& event
            TEXT("PostEditChangeProperty: EmitterStackComponent->Test: %d"),
            TestUproperty);
 
-    ensure(IsValid(this));             // should be alive
+    ensure(IsValid(this));                // should be alive
     InitilizeEmitters();                  // please work
     Super::PostEditChangeProperty(event);
 }
