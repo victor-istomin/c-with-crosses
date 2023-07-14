@@ -9,6 +9,15 @@ draft: false
 
 I noticed that the `PostEditProperty` behaves weirdly when implemented for my component. That's a debugging story I'd like to share, and a quick conclusion of how to override `UActorComponent::PostEditChangeProperty` correctly.
 
+<details>
+<summary>I want it short.
+</summary>
+
+An ActorComponent will update in a special way when spawned by a Blueprint. For example, when the component has been added to an Actor using BP editor. Just in case the reader wants to jump straight into the explanation, there is a [conclusion](#conclusion-how-does-the-editor-change-a-property-of-a-_blueprint-constructed_-component) section below. 
+
+</details>
+
+
 <div style="max-width: 500px;">
 
 ![Necromancer by Dawe Lowe Design](images/NECROmancerDLOWE.jpg "Necromancer by Dawe Lowe Design")
@@ -43,7 +52,6 @@ Eventually, I wanted the component to reflect in-editor changes by updating its 
 The well-known way to do this is to override the `UActorComponent::PostEditChangeProperty` method. Having a decent C++ experience and several examples, this looks trivial, so I crafted the following code.
 
 Hopefully, myself-from-the-future visited my PC and added an `ensure()` and some hints to guard us agains the sleep-deprived night and several hours of debugging.
-
 
 {{< highlight cpp "linenos=table,hl_lines=5-6">}}
 #if WITH_EDITOR
@@ -178,7 +186,7 @@ Thus, the main problem is that the Editor snapshots our Actor before the editing
 
 Let's summarize the findings. 
 
-## Conclusion: how does the Editor change a property of a blueprint-generated component
+## Conclusion: how does the Editor change a property of a _blueprint-constructed_ component
 
 `FPropertyValueImpl::ImportText` will do these steps in order:
 1. `UActorComponent::PreEditChange` that will mark the parent object as dirty and save its state; 
